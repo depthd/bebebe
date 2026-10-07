@@ -1,0 +1,291 @@
+/* Night in a khrushchevka: warm lamp amber on a blue-black night, a red LED alarm clock.
+   One dark look by design. HUD pieces are small glass plates in the corners; the middle stays clear. */
+:root {
+  --night: #0b0c11;
+  --glass: rgba(13, 12, 17, 0.7);
+  --glass-hi: rgba(13, 12, 17, 0.86);
+  --edge: rgba(255, 238, 214, 0.09);
+  --line: rgba(239, 230, 212, 0.14);
+  --ink: #f1e8d6;
+  --ink-dim: #a49b8c;
+  --lamp: #f2b33d;
+  --led: #ff4a2c;
+  --hut: #5fb7a5;
+  --noise: #9b86e0;
+  --bad: #ff5a4f;
+  --good: #7fd48a;
+  --warn: #f2b33d;
+  --display: 'Russo One', 'Arial Black', 'Segoe UI', sans-serif;
+  --body: 'PT Sans', 'Segoe UI', Arial, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, Consolas, monospace;
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.9), 0 0 12px rgba(0, 0, 0, 0.5);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--night);
+  color: var(--ink);
+  font-family: var(--body);
+  overflow: hidden;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+[hidden] { display: none !important; }
+#app, #app canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+button {
+  font: 700 15px/1 var(--body);
+  color: var(--ink);
+  background: rgba(239, 230, 212, 0.07);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+}
+button:hover { background: rgba(239, 230, 212, 0.15); }
+button:active { transform: translateY(1px); }
+button:focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
+button.primary { background: var(--lamp); color: #1b1408; border-color: var(--lamp); box-shadow: 0 6px 24px rgba(242, 179, 61, 0.25); }
+button.primary:hover { filter: brightness(1.08); background: var(--lamp); }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ================= HUD ================= */
+#hud { position: fixed; inset: 0; pointer-events: none; font: 13px var(--body); --gap: 18px; }
+/* a soft vignette: the room reads as night and the corner plates sit on darker ground */
+#hud::before { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse 75% 70% at 50% 50%, transparent 60%, rgba(0, 0, 0, 0.25)); }
+.panel { background: var(--glass); border: 1px solid var(--edge); border-radius: 14px; padding: 11px 13px; backdrop-filter: blur(6px); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25); }
+
+.bar { position: relative; height: 6px; background: rgba(255, 255, 255, 0.09); border-radius: 3px; overflow: hidden; }
+.bar i { display: block; height: 100%; width: 50%; background: var(--lamp); border-radius: 3px; transition: width 0.3s linear, background 0.3s; }
+.bar.hut i { background: var(--hut); }
+.bar.noise i { background: var(--noise); }
+.bar.noise.hot i, .bar.low i { background: var(--bad); }
+.bar.energy i { background: #f3d55b; }
+.bar.low { animation: low 1s ease-in-out infinite; }
+@keyframes low { 50% { background: rgba(255, 90, 79, 0.25); } }
+.stat { display: grid; grid-template-columns: 74px 1fr; align-items: center; gap: 10px; }
+.stat + .stat { margin-top: 8px; }
+.stat label { font: 10.5px var(--display); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink); white-space: nowrap; }
+.stat label em { font-style: normal; color: var(--bad); margin-left: 4px; }
+
+/* --- top left: the alarm clock, the courier, the crew */
+.hud-tl { position: absolute; top: calc(var(--gap) + env(safe-area-inset-top, 0px)); left: var(--gap); display: grid; gap: 10px; justify-items: start; }
+.clock { display: grid; gap: 3px; padding: 6px 12px 7px; background: linear-gradient(#140a08, #0b0606); border: 1px solid rgba(255, 74, 44, 0.16); border-radius: 11px; box-shadow: inset 0 0 16px rgba(0, 0, 0, 0.9), 0 6px 18px rgba(0, 0, 0, 0.45); }
+.clock .lcd { padding: 0; background: none; border: 0; box-shadow: none; }
+.clock .lcd .ghost { left: 0; top: 0; }
+.lcd { position: relative; padding: 4px 12px 5px; background: linear-gradient(#120807, #0a0505); border: 1px solid rgba(255, 74, 44, 0.18); border-radius: 9px; box-shadow: inset 0 0 14px rgba(0, 0, 0, 0.9), 0 6px 18px rgba(0, 0, 0, 0.45); font: 700 30px/1 var(--mono); font-variant-numeric: tabular-nums; letter-spacing: 0.04em; }
+.lcd .ghost { position: absolute; left: 12px; top: 4px; color: rgba(255, 74, 44, 0.08); }
+.lcd b { position: relative; color: var(--led); text-shadow: 0 0 6px rgba(255, 74, 44, 0.75), 0 0 18px rgba(255, 74, 44, 0.35); }
+.clock-sub { display: flex; gap: 8px; font: 10px var(--display); letter-spacing: 0.16em; text-transform: uppercase; color: rgba(255, 140, 110, 0.55); white-space: nowrap; }
+.clock-sub .room:not(:empty)::before { content: '·'; margin-right: 8px; opacity: 0.6; }
+.clock-sub .room { color: rgba(255, 200, 180, 0.8); }
+
+.courier-chip { padding: 6px 11px; border-radius: 9px; background: var(--glass); border: 1px solid var(--edge); backdrop-filter: blur(6px); font: 700 12.5px/1.3 var(--body); color: var(--ink); max-width: 250px; }
+.courier-chip.here { background: var(--lamp); color: #1b1408; border-color: var(--lamp); animation: chip-blink 0.8s steps(2) infinite; }
+@keyframes chip-blink { 50% { filter: brightness(1.25); } }
+
+/* round portraits; the ring is the guy's fun, a red "!" means he needs Oleg */
+.ava { --v: 50%; --c: var(--lamp); position: relative; width: 42px; height: 42px; border-radius: 50%; padding: 3px; background: conic-gradient(var(--c) var(--v), rgba(255, 255, 255, 0.12) 0); box-shadow: 0 3px 10px rgba(0, 0, 0, 0.5); flex: none; transition: transform 0.2s; }
+.ava img { display: block; width: 100%; height: 100%; border-radius: 50%; background: radial-gradient(circle at 50% 35%, #3a3340, #17151b); object-fit: cover; }
+.ava img:not([src]) { visibility: hidden; }
+.ava .badge { position: absolute; top: -4px; right: -5px; width: 18px; height: 18px; border-radius: 50%; background: var(--bad); color: #fff; font: 700 12px/18px var(--display); font-style: normal; text-align: center; box-shadow: 0 0 0 2px #120d10, 0 0 10px rgba(255, 90, 79, 0.7); transform: scale(0); transition: transform 0.2s cubic-bezier(0.3, 1.6, 0.5, 1); }
+.crew { display: grid; gap: 7px; }
+.mate { display: flex; align-items: center; gap: 9px; }
+.mate .name { font: 12px var(--display); letter-spacing: 0.03em; color: var(--ink); padding: 3px 8px; border-radius: 7px; background: rgba(13, 12, 17, 0.55); backdrop-filter: blur(4px); }
+.mate.bad .badge { transform: scale(1); animation: hop 0.6s ease-in-out infinite; }
+.mate.bad .name { color: #ffb3aa; background: rgba(90, 20, 18, 0.6); }
+@keyframes hop { 50% { translate: 0 -2px; } }
+
+/* --- top right: the party */
+.hud-tr { position: absolute; top: calc(var(--gap) + env(safe-area-inset-top, 0px)); right: var(--gap); width: 240px; }
+
+/* --- bottom left: Oleg himself */
+.oleg { position: absolute; left: var(--gap); bottom: calc(var(--gap) + env(safe-area-inset-bottom, 0px)); display: flex; align-items: center; gap: 12px; padding: 9px 14px 9px 9px; background: var(--glass); border: 1px solid var(--edge); border-radius: 40px 16px 16px 40px; backdrop-filter: blur(6px); }
+.ava.big { width: 58px; height: 58px; padding: 4px; }
+.oleg-meters { width: 176px; }
+.oleg-name { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 7px; font: 12px var(--display); letter-spacing: 0.12em; text-transform: uppercase; }
+.oleg-name em { font: 700 11px var(--body); letter-spacing: 0.02em; text-transform: none; font-style: normal; color: var(--warn); animation: blink 1s ease-in-out infinite; }
+.oleg .stat { grid-template-columns: 64px 1fr; }
+.oleg .stat + .stat { margin-top: 6px; }
+@keyframes blink { 50% { opacity: 0.45; } }
+
+/* --- messages from the flat */
+.toasts { position: absolute; top: calc(var(--gap) + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); display: grid; gap: 5px; justify-items: center; width: min(460px, 46vw); }
+.toast { background: var(--glass-hi); padding: 7px 15px; border-radius: 20px; font-size: 13px; text-align: center; border: 1px solid var(--edge); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); animation: toast-in 0.25s ease-out; }
+@keyframes toast-in { from { opacity: 0; translate: 0 -6px; } }
+.toast.alert, .toast.bad { border-color: rgba(255, 90, 79, 0.6); }
+.toast.good { border-color: rgba(127, 212, 138, 0.55); }
+.toast.warn { border-color: rgba(242, 179, 61, 0.55); }
+.toast small { color: var(--ink-dim); font: 10px var(--display); letter-spacing: 0.1em; text-transform: uppercase; margin-right: 8px; }
+.door-alert { position: absolute; top: 66px; left: 50%; transform: translateX(-50%); background: #6a1a16; color: #fff; padding: 8px 16px; border-radius: 20px; font: 13px var(--display); letter-spacing: 0.03em; box-shadow: 0 0 24px rgba(255, 74, 44, 0.4); animation: blink 0.8s infinite; }
+
+/* --- the middle: crosshair, what you look at, the hands-on progress */
+.crosshair { position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.45); }
+.prompt { position: absolute; left: calc(50% + 26px); top: calc(50% - 10px); display: grid; gap: 4px; justify-items: start; }
+.prompt:empty { display: none; }
+.prompt .what { font: 14px var(--display); letter-spacing: 0.02em; text-shadow: var(--shadow); }
+.prompt .info { font-size: 12px; color: #ddd3c2; text-shadow: var(--shadow); max-width: 280px; }
+.prompt .act { font-size: 13px; text-shadow: var(--shadow); display: flex; align-items: center; }
+.prompt kbd { min-width: 20px; text-align: center; font: 700 11px/18px var(--mono); background: var(--lamp); color: #1b1408; border-radius: 5px; padding: 0 5px; margin-right: 8px; box-shadow: 0 2px 0 #9a6c16; }
+.use { position: absolute; left: 50%; top: calc(50% + 22px); transform: translateX(-50%); display: grid; gap: 5px; justify-items: center; width: 220px; }
+.use span { font: 13px var(--display); text-shadow: var(--shadow); text-align: center; }
+.use .bar { width: 100%; height: 6px; }
+.use .bar i { background: var(--good); }
+.use.top { top: 70px; width: min(520px, 70vw); }
+.use.top span { background: var(--glass-hi); padding: 6px 14px; border-radius: 20px; }
+#hud:has(.use.top:not([hidden])) .crosshair { display: none; }
+
+/* --- bottom middle: what's in the hands */
+.hotbar { position: absolute; left: 50%; bottom: calc(30px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); display: flex; gap: 6px; padding: 5px; border-radius: 14px; background: rgba(10, 9, 13, 0.4); border: 1px solid var(--edge); backdrop-filter: blur(4px); }
+.slot { width: 48px; height: 48px; background: rgba(255, 255, 255, 0.035); border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 10px; display: grid; place-items: center; position: relative; transition: border-color 0.15s, background 0.15s; }
+.slot.sel { border-color: var(--lamp); background: rgba(242, 179, 61, 0.14); box-shadow: 0 0 14px rgba(242, 179, 61, 0.3); }
+.slot img { width: 34px; height: 34px; }
+.slot .emo { font-size: 26px; line-height: 1; }
+.slot .k { position: absolute; top: 2px; left: 5px; font: 10px var(--mono); color: var(--ink-dim); }
+.hand-name { position: absolute; left: 50%; bottom: calc(96px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); font: 12px var(--display); letter-spacing: 0.06em; color: var(--ink); text-shadow: var(--shadow); }
+.keys-hint { position: absolute; left: 50%; bottom: calc(9px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); font-size: 11px; color: rgba(239, 230, 212, 0.5); white-space: nowrap; text-shadow: 0 1px 2px #000; }
+.blackout { position: absolute; inset: 0; display: grid; place-items: center; font: 28px var(--display); color: var(--ink-dim); }
+
+/* close-up on the pot / the PC: nothing in front of the screen */
+body.focus #hotbar, body.focus .keys-hint, body.focus #hand-name, body.focus .hud-tl, body.focus .oleg { display: none; }
+
+@media (max-width: 900px) { .hud-tr { width: 200px; } .oleg-meters { width: 140px; } }
+
+/* ================= phone =================
+   Held in Oleg's left hand: thumb on the side, fingers behind; always fits the screen (the shop scrolls inside). */
+#phone {
+  position: fixed; right: 60px; bottom: 12px; width: 360px; max-width: calc(100vw - 32px); max-height: calc(100vh - 24px);
+  background: linear-gradient(#111116, #0a0a0d); border: 3px solid #2c2a33; border-radius: 34px; padding: 14px 14px 10px;
+  display: grid; grid-template-rows: auto 1fr auto; gap: 10px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  transform-origin: 70% 100%; transform: rotate(-3deg); overflow: visible; user-select: none;
+}
+.phone-hand { position: absolute; left: -26px; right: 30px; top: calc(100% - 4px); height: 150px; z-index: -1; pointer-events: none; } /* from below, never over the screen */
+.phone-hand i { position: absolute; background: #e2b594; box-shadow: inset -6px -4px 0 rgba(0, 0, 0, 0.12); }
+.phone-hand i:nth-child(1) { left: 0; top: 0; width: 70%; height: 150px; border-radius: 40px 30px 0 0; }
+.phone-hand i:nth-child(2) { display: none; }
+.phone-top { display: flex; justify-content: space-between; align-items: center; font: 14px var(--mono); color: var(--ink-dim); padding: 0 8px; }
+.phone-money { font: 700 18px var(--mono); color: var(--good); display: flex; align-items: center; gap: 6px; }
+.phone-money img { width: 24px; height: 24px; }
+.phone-screen { min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; }
+.phone-cam { display: grid; gap: 10px; }
+.cam-view { position: relative; aspect-ratio: 3 / 4; border-radius: 18px; overflow: hidden; background: #000; }
+.cam-view canvas { position: absolute; inset: 0; width: 100%; height: 100%; filter: grayscale(0.6) contrast(1.2) brightness(1.1); }
+.cam-view::after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.18) 0 2px, transparent 2px 4px), radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.55)); pointer-events: none; }
+.rec { position: absolute; top: 10px; left: 12px; font: 12px var(--mono); color: var(--led); z-index: 1; text-shadow: 0 0 6px rgba(255, 74, 44, 0.7); }
+.cam-who { font: 17px var(--display); text-align: center; padding: 10px; border-radius: 14px; background: #17161c; }
+.cam-who.busy { background: #5a1616; color: #fff; }
+.phone-shop { display: grid; gap: 8px; }
+.shop-list { display: grid; gap: 6px; }
+.shop-row { display: grid; grid-template-columns: 40px 1fr auto; align-items: center; gap: 8px; background: #17161c; border: 1px solid transparent; border-radius: 14px; padding: 6px 8px; transition: border-color 0.15s, background 0.15s; }
+.shop-row.in { border-color: var(--lamp); background: #201d16; }
+.shop-row img { width: 40px; height: 40px; }
+.shop-row .info { display: grid; gap: 1px; min-width: 0; }
+.shop-row b { font: 15px var(--display); }
+.shop-row small { color: var(--ink-dim); font-size: 11px; line-height: 1.15; }
+.shop-row .price { font: 700 14px var(--mono); color: var(--lamp); }
+.shop-row .qty { display: flex; align-items: center; gap: 6px; }
+.shop-row .qty button { width: 32px; height: 32px; padding: 0; border-radius: 50%; font: 700 18px var(--mono); }
+.shop-row .qty span { min-width: 18px; text-align: center; font: 700 16px var(--mono); }
+.shop-total { text-align: center; font-size: 14px; color: var(--ink-dim); }
+.shop-total b { color: var(--lamp); font: 700 18px var(--mono); }
+.shop-total.poor, .shop-total.poor b { color: var(--bad); }
+.slide { position: relative; height: 52px; border-radius: 26px; background: #1f1d26; border: 1px solid var(--line); overflow: hidden; touch-action: none; }
+.slide.no { background: #3a1616; }
+.slide-fill { position: absolute; inset: 0 auto 0 0; width: 0; background: rgba(127, 212, 138, 0.35); }
+.slide-text { position: absolute; inset: 0; display: grid; place-items: center; font: 15px var(--display); color: var(--ink-dim); pointer-events: none; }
+.slide-knob { position: absolute; top: 5px; left: 5px; width: 42px; height: 42px; border-radius: 50%; background: var(--lamp) center / 28px no-repeat; cursor: grab; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5); }
+.orders { display: grid; gap: 6px; font-size: 13px; color: var(--ink-dim); }
+.order { display: grid; grid-template-columns: 28px 1fr auto; align-items: center; gap: 8px; }
+.order img { width: 28px; height: 28px; }
+.order .bar { height: 6px; }
+.order .bar i { background: var(--good); }
+.phone-dock { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.phone-dock button { display: grid; justify-items: center; gap: 4px; padding: 8px 4px; font-size: 12px; border-radius: 16px; }
+.phone-dock button img, .phone-dock .x { width: 34px; height: 34px; font-size: 24px; line-height: 34px; }
+.phone-dock button.on { background: rgba(242, 179, 61, 0.2); border-color: var(--lamp); }
+
+/* ================= menus =================
+   The flat itself is the backdrop: the card sits on a dark band on the left, the party shows on the right. */
+#menu, #end {
+  position: fixed; inset: 0; display: grid; align-items: center; justify-items: start; padding: 24px clamp(20px, 7vw, 96px);
+  background:
+    linear-gradient(90deg, rgba(8, 8, 12, 0.94) 0%, rgba(8, 8, 12, 0.8) 38%, rgba(8, 8, 12, 0.15) 72%, rgba(8, 8, 12, 0.35) 100%),
+    radial-gradient(ellipse 60% 80% at 20% 40%, rgba(242, 179, 61, 0.1), transparent 70%);
+  overflow-y: auto;
+}
+#end { background: linear-gradient(90deg, rgba(8, 8, 12, 0.95) 0%, rgba(8, 8, 12, 0.85) 50%, rgba(8, 8, 12, 0.5) 100%); }
+.menu-card { width: min(540px, 100%); display: grid; gap: 18px; animation: card-in 0.6s ease-out; }
+@keyframes card-in { from { opacity: 0; translate: -12px 0; } }
+.eyebrow { margin: 0; font: 12px var(--display); letter-spacing: 0.2em; text-transform: uppercase; color: var(--lamp); }
+h1 { margin: 0; font: 64px/0.92 var(--display); text-transform: uppercase; letter-spacing: 0.01em; text-wrap: balance; text-shadow: 0 4px 30px rgba(0, 0, 0, 0.6); }
+h1 span { display: block; margin-top: 8px; font-size: 0.42em; letter-spacing: 0.04em; color: var(--lamp); text-transform: none; }
+.menu-lcd { display: inline-flex; align-items: center; gap: 10px; justify-self: start; }
+.menu-lcd .lcd { font-size: 22px; }
+.menu-lcd small { font: 11px var(--display); letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-dim); }
+.lead { margin: 0; font-size: 17px; line-height: 1.5; color: var(--ink); max-width: 44ch; }
+.menu-buttons { display: flex; flex-wrap: wrap; gap: 10px; }
+.night-pick { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.night-pick span { font: 11px var(--display); letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-dim); margin-right: 6px; }
+.night-pick button { width: 40px; height: 36px; padding: 0; font: 700 15px var(--mono); }
+.mobile-note { margin: 0; color: var(--warn); font-size: 14px; }
+.controls { margin: 4px 0 0; padding-top: 16px; border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 9px 18px; font-size: 13.5px; }
+.controls div { display: flex; gap: 10px; min-width: 0; }
+.controls dt { font: 700 12px var(--mono); color: var(--lamp); min-width: 70px; white-space: nowrap; }
+.controls dd { margin: 0; color: var(--ink-dim); }
+.stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.stats div { display: grid; gap: 2px; padding: 10px 12px; border-radius: 12px; background: rgba(239, 230, 212, 0.05); border: 1px solid var(--line); }
+.stats b { font: 700 22px var(--mono); color: var(--lamp); }
+.stats span { font-size: 12.5px; color: var(--ink-dim); }
+
+#orbit-bar {
+  position: fixed; top: calc(12px + env(safe-area-inset-top, 0px)); left: 16px; right: 16px;
+  display: flex; gap: 12px; align-items: center; flex-wrap: wrap; font-size: 14px; color: var(--ink-dim);
+}
+
+@media (max-width: 700px) {
+  h1 { font-size: 44px; }
+  #menu, #end { background: rgba(8, 8, 12, 0.86); }
+  .hud-tr { width: 46vw; }
+}
+
+/* ================= photo mode ================= */
+.viewfinder { position: absolute; inset: 12% 16%; pointer-events: none; }
+.viewfinder i { position: absolute; width: 46px; height: 46px; border: 4px solid rgba(255, 255, 255, 0.85); }
+.viewfinder i:nth-child(1) { top: 0; left: 0; border-right: 0; border-bottom: 0; }
+.viewfinder i:nth-child(2) { top: 0; right: 0; border-left: 0; border-bottom: 0; }
+.viewfinder i:nth-child(3) { bottom: 0; left: 0; border-right: 0; border-top: 0; }
+.viewfinder i:nth-child(4) { bottom: 0; right: 0; border-left: 0; border-top: 0; }
+.viewfinder span { position: absolute; top: 10px; right: 60px; font: 700 20px var(--mono); color: #fff; text-shadow: 0 1px 3px #000; }
+.viewfinder small { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); font: 14px var(--display); color: #fff; text-shadow: 0 1px 3px #000; white-space: nowrap; }
+.flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; transition: opacity 0.35s; }
+.flash.on { opacity: 0.85; transition: none; }
+.polaroid { position: absolute; right: 24px; top: 170px; margin: 0; width: 220px; background: #f7f3ea; padding: 10px 10px 8px; border-radius: 4px; transform: rotate(4deg); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5); }
+.polaroid img { width: 100%; display: block; background: #222; }
+.polaroid figcaption { font: 15px var(--display); color: #1b1612; text-align: center; padding-top: 6px; }
+.end-photos { display: flex; flex-wrap: wrap; gap: 14px; }
+.end-photos figure { margin: 0; width: 170px; background: #f7f3ea; padding: 8px 8px 6px; border-radius: 3px; transform: rotate(var(--r, 0deg)); box-shadow: 0 8px 22px rgba(0, 0, 0, 0.5); }
+.end-photos img { width: 100%; display: block; }
+.end-photos figcaption { font: 13px var(--display); color: #1b1612; text-align: center; padding-top: 4px; }
+
+.confetti { position: fixed; top: -20px; width: 8px; height: 14px; border-radius: 2px; pointer-events: none; animation: confetti linear infinite; z-index: 0; }
+#end .menu-card { position: relative; z-index: 1; }
+@keyframes confetti { to { transform: translate(var(--x), 110vh) rotate(var(--r)); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .confetti { display: none; }
+  .mate.bad .badge, .oleg-name em, .door-alert, .bar.low, .courier-chip.here, .menu-card, .toast { animation: none; }
+}
+
+/* ---------- "Oleg's eyes" filters: screen texts and the name flash ---------- */
+.filter-ov { position: fixed; inset: 0; pointer-events: none; font: 700 15px/1.35 var(--mono); color: #fff; text-shadow: 0 0 4px rgba(0, 0, 0, 0.9); letter-spacing: 0.04em; }
+.filter-ov .ov-tl { position: absolute; top: 9%; left: 9%; }
+.filter-ov .ov-br { position: absolute; bottom: 9%; right: 9%; }
+.filter-ov .ov-bl { position: absolute; bottom: 12%; left: 8%; }
+.filter-ov .rec { color: #ff3b2f; animation: blink 1s steps(2) infinite; }
+.filter-ov .vhs { font: 22px/1.3 var(--mono); color: #e8f0ff; text-shadow: 2px 0 rgba(255, 0, 80, 0.6), -2px 0 rgba(0, 200, 255, 0.6); }
+.filter-ov .night { color: #b8ffc0; }
+.filter-name { position: fixed; left: 50%; top: 38%; transform: translate(-50%, -50%); padding: 8px 16px; border-radius: 20px; background: rgba(13, 12, 17, 0.8); font: 15px var(--display); color: var(--ink); opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 5; }
+.filter-name.on { opacity: 1; transition: none; }
