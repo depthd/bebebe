@@ -7,6 +7,7 @@ Browser 3D game (three.js + Vite, vanilla JS), a birthday gift. FNAF × Who's Yo
 - `npm install`, then `npm run dev` (http://localhost:5173)
 - `npm run build` builds to `dist/`, which works from any subfolder (`base: './'`)
 - `npm run plan` regenerates `docs/plan.svg` from the layout data
+- Pushes to the default branch build and deploy to GitHub Pages (`.github/workflows/pages.yml`)
 
 ## Map of the code
 
