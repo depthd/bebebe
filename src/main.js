@@ -17,6 +17,7 @@ import { iconURL } from './ui/icons.js';
 import * as audio from './audio.js';
 import { TUNE, BIRTHDAY } from './config.js';
 import { createLightPool } from './world/lightpool.js';
+import { createPerf } from './perf.js';
 import { createFilters } from './filters.js';
 
 const params = new URLSearchParams(location.search);
@@ -117,8 +118,14 @@ function show(id, v) {
   $(id).hidden = !v;
 }
 
+// the benchmark looks at the party from the title-screen corner
+function benchView() {
+  player.place(MENU_SHOT.x, MENU_SHOT.z, MENU_SHOT.yaw);
+  player.pitch = MENU_SHOT.pitch;
+}
+
 // the title screen shows the party until the first night starts
-let attract = !params.has('play') && !params.has('x');
+let attract = !params.has('play') && !params.has('x') && !params.has('bench');
 const MENU_SHOT = { x: 6.9, z: 7.0, yaw: 35 * (Math.PI / 180), pitch: -0.2 };
 
 function startNight(n) {
@@ -184,6 +191,7 @@ function setPhone(open, relock = true) {
 
 game.onEnd = (res) => {
   if (attract) return startNight(game.night);
+  if (perf.benching) return benchView(startNight(game.night)); // the benchmark outlives a lost night
   mode = 'end';
   setPhone(false, false);
   document.exitPointerLock?.();
@@ -323,7 +331,7 @@ document.addEventListener('mousedown', (e) => {
 });
 document.addEventListener('mouseup', (e) => e.button === 0 && (use.down = false));
 canvas.addEventListener('mousedown', () => {
-  if (mode !== 'play' || locked || phoneOpen || focusActive()) return;
+  if (mode !== 'play' || locked || phoneOpen || focusActive() || perf.benching) return;
   // back from a close-up (pot, PC) the browser may refuse to re-lock the mouse on its own: a click does it
   dragging = true;
   lock();
@@ -333,6 +341,8 @@ addEventListener('wheel', (e) => mode === 'play' && game.inv.select(game.inv.sel
 
 let currentActions = [];
 addEventListener('keydown', (e) => {
+  if (e.code === 'Backquote' && !e.repeat) return perf.toggle(); // Ё: the performance meter
+  if (perf.benching) return; // hands off while the benchmark runs
   if (e.code === 'KeyV' && !e.repeat && (mode === 'play' || mode === 'menu' || mode === 'end')) return nextFilter(e.shiftKey ? -1 : 1);
   if (mode !== 'play') return;
   player.keys.add(e.code);
@@ -411,6 +421,7 @@ let blackFx = 0;
 let hudT = 0;
 
 function frame(now) {
+  perf.begin(now);
   const dt = Math.max(0, Math.min(0.05, (now - last) / 1000)); // never backwards (first frame)
   last = now;
   time += dt;
@@ -520,14 +531,17 @@ function frame(now) {
   filters.update(time, game.clock);
 
   lightPool.update(dt, mode === 'play' && hud.camRect() ? [camera, doorCam] : [mode === 'orbit' ? orbitCam : camera]);
-  if (mode === 'orbit') renderer.render(scene, orbitCam);
-  else fx.render();
+  perf.renderStart();
+  if (!perf.cfg.render) { /* benchmark: logic only */ }
+  else if (mode === 'orbit') renderer.render(scene, orbitCam);
+  else if (perf.cfg.post) fx.render();
+  else renderer.render(scene, camera); // benchmark: no post-processing
   if (snapRequested) {
     snapRequested = false;
     if (mode === 'play') snap();
   }
 
-  const r = mode === 'play' && hud.camRect();
+  const r = perf.cfg.render && mode === 'play' && hud.camRect();
   if (r) {
     doorCam.aspect = r.width / r.height;
     doorCam.updateProjectionMatrix();
@@ -544,6 +558,7 @@ function frame(now) {
     if (camCanvas.width !== w || camCanvas.height !== h) [camCanvas.width, camCanvas.height] = [w, h];
     camCtx.drawImage(canvas, r.left * pr, r.top * pr, w, h, 0, 0, w, h);
   }
+  perf.end(now);
   requestAnimationFrame(frame);
 }
 
@@ -551,6 +566,8 @@ function frame(now) {
 // heads are flat Doom-style cut-outs that turn to the camera (the cube-head style is kept for ?heads=box)
 game.style = params.get('heads') === 'box' ? 'box' : 'sprite';
 mirror = createMirror({ furn, scene, hands, style: game.style });
+// FPS meter (?perf, Ё) and the one-minute benchmark (?bench)
+const perf = createPerf({ renderer, scene, fx, filters, game, world: ragdoll.world, params });
 startNight(Number(params.get('night')) || 1);
 started = false; // the menu offers "start", not "continue"
 player.update(0);
@@ -562,7 +579,7 @@ if (params.has('eye')) {
   apt.ceiling.visible = player.eye < 2.5;
 }
 if (params.get('view') === 'orbit' || params.get('view') === 'top') toOrbit();
-if (params.has('play')) {
+if (params.has('play') || params.has('bench')) {
   // screenshot/testing mode: run without pointer lock
   mode = 'play';
   started = true;
@@ -571,6 +588,10 @@ if (params.has('play')) {
   const skip = Number(params.get('t')) || 0;
   for (let s = 0; s < skip; s += 0.05) game.update(0.05);
   if (params.has('phone')) setPhone(true, false);
+  if (params.has('bench')) {
+    benchView();
+    perf.startBench();
+  }
 } else if (attract) {
   game.olegPos = [99, 99];
   for (let s = 0; s < 10; s += 0.05) game.update(0.05); // the guys have settled in by the time the title shows

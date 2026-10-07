@@ -53,6 +53,19 @@ export function makeFX(renderer, scene, camera) {
     setSize(w, h) {
       composer.setSize(w, h);
     },
+    setPixelRatio(r) {
+      composer.setPixelRatio(r);
+    },
+    get samples() {
+      return composer.renderTarget1.samples;
+    },
+    setSamples(n) {
+      // the targets are rebuilt with the new sample count on their next use
+      for (const t of [composer.renderTarget1, composer.renderTarget2]) {
+        t.samples = n;
+        t.dispose();
+      }
+    },
     render() {
       composer.render();
     },
