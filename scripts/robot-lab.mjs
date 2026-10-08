@@ -40,7 +40,7 @@ SCEN.robust1 = { drunk: 0, steps: [[1], [3.5, 'pushRandom(0.6)'], [3.5, 'pushRan
 SCEN.robust = { drunk: Number(process.env.DRUNK ?? 0), steps: [[1], ...[0.6, 1.0, 1.4, 1.8].flatMap((s) => [0, 1, 2, 3].map((k) => [3.5, `pushRandom(${s})`]))] };
 const names = args.length ? args : Object.keys(SCEN).filter((n) => !n.startsWith('robust'));
 
-const server = await createServer({ server: { port: 0, host: '127.0.0.1' }, logLevel: 'error' });
+const server = await createServer({ server: { port: 0, host: '127.0.0.1', hmr: false, watch: null }, logLevel: 'error' });
 await server.listen();
 const url = server.resolvedUrls.local[0];
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || '/opt/pw-browsers/chromium', args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
