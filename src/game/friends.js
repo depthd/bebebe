@@ -187,15 +187,17 @@ class Walker {
       p.stuck = 0;
     }
     // keep clear of the furniture, the walls and the others on the way (bodies bump and fall)
-    const [ax, az] = this.avoid(x, z, tx, tz, d);
+    const [ax, az] = this.avoid(x, z, tx, tz, d, last);
     rb.goal = [x + ax * Math.min(d, 1), z + az * Math.min(d, 1)];
     this.heading = Math.atan2(tx - x, tz - z);
   }
   // the way to (tx, tz), bent away from whatever is close: a unit direction
-  avoid(x, z, tx, tz, d) {
+  avoid(x, z, tx, tz, d, last = true) {
     const g = this.game;
     let ax = (tx - x) / (d || 1), az = (tz - z) / (d || 1);
-    const near = Math.min(1, d / 0.8); // close to where he's going: let him get there
+    // close to where he's going: let him get there (only the end of the path: a doorway on the way is where
+    // the walls matter most)
+    const near = last ? Math.min(1, d / 0.8) : 1;
     for (const o of [...g.friends, { pos: g.olegPos, rag: { active: true } }]) {
       if (o === this || !o.rag?.active) continue;
       const ox = x - o.pos[0], oz = z - o.pos[1], od = Math.hypot(ox, oz);
