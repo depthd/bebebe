@@ -349,7 +349,8 @@ export class Robot {
   control(h) {
     if (!this.active || !this.kin) return;
     const R = TUNE.robot, B = this.bodies, S = this.servos, st = this.stats;
-    // how drunk his body is: hardly at first, a lot near the end (CONCEPT: up to ~50% he only sways)
+    // how drunk his legs are: hardly at first, a lot near the end (CONCEPT: up to ~50% he only sways, at 80%
+    // he goes down about every half a minute)
     const d = clamp(this.drunk, 0, 1) ** R.drunkCurve;
     const up = pressing();
     let feetN = 0;
@@ -410,7 +411,7 @@ export class Robot {
     const dy = Math.atan2(Math.sin(yw - this.yawNow), Math.cos(yw - this.yawNow));
     this.yawNow += clamp(dy, -(moving ? 1.2 : 0.8) * h, (moving ? 1.2 : 0.8) * h);
     // drunk: his sense of up wanders, and he leans with it
-    const tau = 1.2, sig = R.wander * (R.swayRaw ? clamp(this.drunk, 0, 1) : d) * Math.sqrt(2 / tau);
+    const tau = 1.2, sig = R.wander * clamp(this.drunk, 0, 1) * Math.sqrt(2 / tau); // he sways from the first glass
     this.wander.x += (-this.wander.x / tau) * h + sig * Math.sqrt(h) * gauss();
     this.wander.z += (-this.wander.z / tau) * h + sig * Math.sqrt(h) * gauss();
     // the pelvis he wants: level (plus the animation's small sway), facing yawNow, leaning into the walk

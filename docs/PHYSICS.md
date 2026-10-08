@@ -32,7 +32,10 @@ not decoration.
   one goes, crossing over if it has to (that's a stumble). **Walking is the same on purpose**, the foot
   landing a bit short of the capture point so the body rolls on. A sharp turn is walked as an arc.
 - **Drunk**: weaker and slower joints, late steps (he reacts to where his body was), sloppy foot placement,
-  a sense of up that wanders off (he leans, then has to catch it).
+  a sense of up that wanders off (he leans, then has to catch it). The sway starts with the first glass; the
+  legs go on a curve (`drunkCurve`: drunk^5), so as CONCEPT.md asks, up to ~50% he only sways and stumbles,
+  at 80% he goes down about every half a minute, at 100% several times (lab, `npm run robot drunk`, DRUNK=…:
+  0 / 1.25 / 3 falls per guy in 30 s).
 - **Falling** is real (the torso past ~57°); on the floor the joints go slack. **Getting up** is played from
   the pose he lies in (face down: push up, kneel, a foot forward, up; face up: sit up, tuck, squat, up); the
   first try may sag back down. No lift, no snap.
@@ -85,7 +88,7 @@ Cost: physics 1.8–2.5 ms per frame vs 1.6 ms for the old ragdolls (headless, 4
 
 - Walking is slow (a robot shuffle). `stride` > 1 lands walking steps further back and speeds him up: 1.5 is
   about +25% in the lab, but in the game it doubles the falls (10 vs 5), and 2.2 overshoots its goal. Kept at 1.
-- Drunk still falls often, as it should: half drunk, each guy goes down twice in 26 s of walking about; fully
-  drunk, twice in 18 s.
+- Drunk: the legs were drunk too early (half drunk, a fall every ~23 s in the game, where the old ragdolls
+  never fell); now on the CONCEPT curve, see Drunk above.
 - Guys turning next to walls and each other.
 - Then: gameplay hooks (Oleg catching, pushing a guy into another), and switching the default.
