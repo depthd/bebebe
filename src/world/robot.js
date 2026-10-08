@@ -587,7 +587,8 @@ export class Robot {
   // which leg should step now (-1: none)
   stepWanted(xi, sup, fwd, left, moving, d) {
     const g = this.gait;
-    if (moving) return g.next;
+    const why = (w, leg) => ((this.debug.why = w), leg); // which reason started the step (for the lab)
+    if (moving) return why('walk', g.next);
     const ex = xi.x - sup.x, ez = xi.z - sup.z;
     const f = ex * fwd.x + ez * fwd.z, l = ex * left.x + ez * left.z;
     const fa = this.feet[0].at, fb = this.feet[1].at;
@@ -602,20 +603,20 @@ export class Robot {
     // feet far apart (after a catch): the hips can't come up between them, the far foot comes in
     if (inside && Math.hypot(dx, dz) > 0.45) {
       const da = Math.hypot(xi.x - fa.x, xi.z - fa.z), db = Math.hypot(xi.x - fb.x, xi.z - fb.z);
-      return da > db ? 0 : 1;
+      return why('split', da > db ? 0 : 1);
     }
     if (inside && !crossed && Math.abs(fy) < 0.35) return -1;
-    if (Math.abs(fy) >= 0.35 && inside) return g.next; // turning on the spot: left, right, left
-    if (crossed) return g.next;
+    if (Math.abs(fy) >= 0.35 && inside) return why('turn', g.next); // turning on the spot: left, right, left
+    if (crossed) return why('crossed', g.next);
     // a foot carrying most of the weight can't be lifted: the other one goes, across if it has to
     const n0 = this.feet[0].n, n1 = this.feet[1].n;
-    if (Math.abs(n0 - n1) > 0.1 * (n0 + n1)) return n0 < n1 ? 0 : 1;
+    if (Math.abs(n0 - n1) > 0.1 * (n0 + n1)) return why(-f > Math.abs(l) ? 'back' : f > Math.abs(l) ? 'fwd' : 'side', n0 < n1 ? 0 : 1);
     // sideways: the far leg crosses over (lifting the near one would take the floor away from the side he
     // falls to); TUNE.robot.cross = 0 steps out with the near one instead
-    if (Math.abs(l) > Math.abs(f)) return (l > 0) === !TUNE.robot.cross ? 1 : 0;
+    if (Math.abs(l) > Math.abs(f)) return why('side', (l > 0) === !TUNE.robot.cross ? 1 : 0);
     // forwards / backwards: the foot farther from where he's falling
     const da = Math.hypot(xi.x - fa.x, xi.z - fa.z), db = Math.hypot(xi.x - fb.x, xi.z - fb.z);
-    return da > db ? 0 : 1;
+    return why(f < 0 ? 'back' : 'fwd', da > db ? 0 : 1);
   }
 
   footYaw() {
