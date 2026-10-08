@@ -8,6 +8,7 @@ Browser 3D game (three.js + Vite, vanilla JS), a birthday gift. FNAF × Who's Yo
 - `npm run build` builds to `dist/`, which works from any subfolder (`base: './'`)
 - `npm run plan` regenerates `docs/plan.svg` from the layout data
 - Pushes to the default branch build and deploy to GitHub Pages (`.github/workflows/pages.yml`)
+- `npm run shots -- <name>` saves eye-level screenshots of 14 fixed views (every room, landing, yard, shop) to `shots/<name>/`, plus 2x2 contact sheets. Run it before and after any visual change and compare the sheets; a top-down look does not count as seeing the result.
 
 ## Map of the code
 
@@ -40,6 +41,7 @@ Browser 3D game (three.js + Vite, vanilla JS), a birthday gift. FNAF × Who's Yo
 ## Debugging
 
 URL params:
+- `?perf` (or the Ё / Backquote key) shows the performance meter; `?bench` runs the one-minute benchmark (`src/perf.js`) and ends with a copyable report.
 - `?view=top` or `?view=orbit` opens the dollhouse view.
 - `?heads=box` shows the old cube heads (debug only; the game always uses flat sprite heads).
 - `?play` starts without pointer lock. Add `x`, `z`, `yaw`, `pitch` (degrees) to place Oleg, `t=SECONDS` to fast-forward the sim, `phone` to open the phone, `night=N` to pick a night, `eye=METERS` to move the camera up (e.g. `eye=6&pitch=-89` for a close top-down look).
