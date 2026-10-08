@@ -4,7 +4,8 @@ import * as THREE from 'three';
 import { Reflector } from 'three/addons/objects/Reflector.js';
 import { makePerson } from './figures.js';
 
-export function createMirror({ furn, scene, hands, style }) {
+// seen(camera): can the mirror really be seen from there (frustum culling can't tell, it sees through walls)
+export function createMirror({ furn, scene, hands, style, seen }) {
   const sink = furn.items.bathSink;
   let src = null;
   sink.group.traverse((o) => o.userData.mirror && (src = o));
@@ -26,7 +27,13 @@ export function createMirror({ furn, scene, hands, style }) {
   oleg.root.visible = false;
   scene.add(oleg.root);
   const orig = mirror.onBeforeRender;
+  let primed = false; // the first frame always fills it, so it's never blank
   mirror.onBeforeRender = function (...args) {
+    // the reflection draws the whole flat again: only while someone can actually see it,
+    // otherwise it keeps its last picture (from afar nobody can tell)
+    if (primed && !seen(args[2])) return;
+    primed = true;
+    mirror.userData.reflected = true; // read by the performance meter
     const hv = hands.root.visible;
     oleg.root.visible = true;
     hands.root.visible = false;

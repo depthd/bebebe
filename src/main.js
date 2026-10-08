@@ -567,7 +567,13 @@ function frame(now) {
 // ---------- boot ----------
 // heads are flat Doom-style cut-outs that turn to the camera (the cube-head style is kept for ?heads=box)
 game.style = params.get('heads') === 'box' ? 'box' : 'sprite';
-mirror = createMirror({ furn, scene, hands, style: game.style });
+mirror = createMirror({
+  furn, scene, hands, style: game.style,
+  seen: (cam) => {
+    const room = roomAt(cam.position.x, cam.position.z)?.id;
+    return room === 'bath' || (room === 'hall' && apt.doors.bath.open);
+  },
+});
 // FPS meter (?perf, Ё) and the one-minute benchmark (?bench)
 const perf = createPerf({ renderer, scene, fx, filters, game, world: ragdoll.world, params });
 startNight(Number(params.get('night')) || 1);

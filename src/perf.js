@@ -88,7 +88,7 @@ export function createPerf({ renderer, scene, fx, filters, game, world, params }
   const cfg = { ...DEFAULTS };
 
   // per-frame numbers
-  let t0 = 0, tRender = 0, prev = 0, phys = 0, steps = 0, mirrorSeen = false;
+  let t0 = 0, tRender = 0, prev = 0, phys = 0, steps = 0;
   const live = []; // {dt, logic, render, phys, steps}
   const gpuLive = [];
   let rec = null; // the benchmark's current measurement
@@ -108,14 +108,7 @@ export function createPerf({ renderer, scene, fx, filters, game, world, params }
   }
   let reflector = null;
   function wrapMirror() {
-    if (reflector) return;
-    scene.traverse((o) => o.isReflector && (reflector = o));
-    if (!reflector) return;
-    const orig = reflector.onBeforeRender;
-    reflector.onBeforeRender = function (...a) {
-      mirrorSeen = true;
-      return orig.apply(this, a);
-    };
+    if (!reflector) scene.traverse((o) => o.isReflector && (reflector = o));
   }
 
   // ---------- panel ----------
@@ -318,7 +311,7 @@ export function createPerf({ renderer, scene, fx, filters, game, world, params }
       `FPS ${fps(s.dt)} · кадр ${f1(s.dt)} мс (худшие ${f1(s.worst)})`,
       `процессор: логика ${f1(s.logic)} мс (физика ${f1(s.phys)}, ${Math.round(s.steps)} шаг.) · отрисовка ${f1(s.render)} мс`,
       `видеокарта: ${timer ? (s.gpu != null ? `${f1(s.gpu)} мс` : '…') : 'нет таймера в этом браузере'}`,
-      `${db.x}×${db.y} · MSAA ${fx.samples}x · ${renderer.info.render.calls} вызовов · ${Math.round(renderer.info.render.triangles / 1000)}k треуг.${mirrorSeen ? ' · зеркало в кадре' : ''}`,
+      `${db.x}×${db.y} · MSAA ${fx.samples}x · ${renderer.info.render.calls} вызовов · ${Math.round(renderer.info.render.triangles / 1000)}k треуг.${reflector?.userData.reflected ? ' · зеркало перерисовано' : ''}`,
       `→ ${v}`,
     ];
     if (bench) lines.unshift(`Проверка ${Math.max(1, bench.i + 1)}/${STEPS.length}: ${STEPS[Math.max(0, bench.i)].name}. Не трогай мышь и клавиатуру, это займёт около полутора минут.`);
@@ -345,7 +338,7 @@ export function createPerf({ renderer, scene, fx, filters, game, world, params }
       t0 = performance.now();
       phys = 0;
       steps = 0;
-      mirrorSeen = false;
+      if (reflector) reflector.userData.reflected = false;
       renderer.info.reset();
       if (bench) stepBench(now);
     },
