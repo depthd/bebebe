@@ -10,6 +10,7 @@ import { CHARS } from './game/friends.js';
 
 const params = new URLSearchParams(location.search);
 if (params.get('steps')) setSteps(Number(params.get('steps')), Number(params.get('hz') ?? 180));
+if (params.get('iters')) world.solver.iterations = Number(params.get('iters'));
 const R = TUNE.robot;
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: params.has('capture') });
 renderer.setPixelRatio(Math.min(2, devicePixelRatio));
@@ -163,6 +164,8 @@ slider('sliders2', 'Пьяный: промах ноги, м', ...tune('sloppy'),
 slider('sliders2', 'Пьяный: качает, рад', ...tune('wander'), 0, 0.5, 0.01);
 slider('sliders2', 'Упал при наклоне, рад', ...tune('fallAt'), 0.4, 1.4, 0.02);
 slider('sliders2', 'Встаёт не с первого раза', ...tune('retry'), 0, 1, 0.05);
+slider('sliders2', 'Помощь: выпрямляет, Н·м', ...tune('assist'), 0, 300, 5);
+slider('sliders2', 'Помощь: ловит себя, Н·м', ...tune('reflex'), 0, 600, 10);
 
 const pick = () => (selected < 0 ? guys : [guys[selected]]);
 function push(g, s = pushStrength) {

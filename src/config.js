@@ -103,10 +103,11 @@ export const TUNE = {
   // (`late` s) and off target (`sloppy` m), the sense of up wanders (`wander` rad); `fallAt` = torso tilt
   // (rad) that counts as down, `lie` s on the floor before getting up, `retry` = chance the first try fails.
   // `assist`: the only help from outside, N·m that stand the upper body up while the feet press on the floor
-  // (0 = none, he's on his own)
+  // (0 = none, he's on his own); `reflex`: N·m more for half a second when he tips past ~20° (a sober guy
+  // catching himself; 2.5 s to come back, drunk hardly at all)
   robot: {
     strength: 1, speed: 14, stepTime: 0.36, stepHeight: 0.09, stepWidth: 0.1, placeGain: 0.05, walkSpeed: 1.0,
-    crouch: 0.02, ankle: 2.5, assist: 80, weak: 0.45, late: 0.25, sloppy: 0.12, wander: 0.22, fallAt: 1.0, lie: [1.2, 2.4], retry: 0.6,
+    crouch: 0.02, ankle: 2.5, lead: 1.4, assist: 80, reflex: 300, weak: 0.45, late: 0.25, sloppy: 0.12, wander: 0.22, fallAt: 1.0, lie: [1.2, 2.4], retry: 0.6,
   },
 
   // drunk physics: bodies push each other apart; running into a drunk guy knocks him over (knockOver:

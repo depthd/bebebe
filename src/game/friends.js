@@ -81,11 +81,11 @@ class Walker {
   // the first free point from it towards its nav node
   approach(spot) {
     const g = this.game, [px, pz] = spot.p;
-    if (!spot.pose && !g.bodyBlocked(px, pz, 0.24)) return spot.p;
+    if (!spot.pose && !g.bodyBlocked(px, pz, 0.3)) return spot.p;
     const [nx, nz] = NAV[spot.node] ?? spot.p;
     for (let k = 1; k <= 24; k++) {
       const t = k / 24, x = px + (nx - px) * t, z = pz + (nz - pz) * t;
-      if (!g.bodyBlocked(x, z, 0.24)) return [x, z];
+      if (!g.bodyBlocked(x, z, 0.3)) return [x, z];
     }
     return [nx, nz];
   }
@@ -180,8 +180,42 @@ class Walker {
       this.path.shift();
       p.stuck = 0;
     }
-    rb.goal = [tx, tz];
+    // keep clear of the furniture, the walls and the others on the way (bodies bump and fall)
+    const [ax, az] = this.avoid(x, z, tx, tz, d);
+    rb.goal = [x + ax * Math.min(d, 1), z + az * Math.min(d, 1)];
     this.heading = Math.atan2(tx - x, tz - z);
+  }
+  // the way to (tx, tz), bent away from whatever is close: a unit direction
+  avoid(x, z, tx, tz, d) {
+    const g = this.game;
+    let ax = (tx - x) / (d || 1), az = (tz - z) / (d || 1);
+    const near = Math.min(1, d / 0.8); // close to where he's going: let him get there
+    for (const o of [...g.friends, { pos: g.olegPos, rag: { active: true } }]) {
+      if (o === this || !o.rag?.active) continue;
+      const ox = x - o.pos[0], oz = z - o.pos[1], od = Math.hypot(ox, oz);
+      if (od > 1e-3 && od < 1) {
+        const w = 1.6 * (1 - od);
+        ax += (ox / od) * w;
+        az += (oz / od) * w;
+      }
+    }
+    for (const c of [...g.apt.colliders, ...g.furn.colliders]) {
+      if (c.enabled === false) continue;
+      let cx, cz;
+      if (c.seg) {
+        const [sx, sz, ex, ez] = c.seg, vx = ex - sx, vz = ez - sz;
+        const t = Math.max(0, Math.min(1, ((x - sx) * vx + (z - sz) * vz) / (vx * vx + vz * vz)));
+        [cx, cz] = [sx + vx * t, sz + vz * t];
+      } else [cx, cz] = [Math.max(c.x0, Math.min(c.x1, x)), Math.max(c.z0, Math.min(c.z1, z))];
+      const ox = x - cx, oz = z - cz, od = Math.hypot(ox, oz) - (c.r ?? 0);
+      if (od > 1e-3 && od < 0.5) {
+        const w = 1.2 * (1 - od / 0.5) * near;
+        ax += (ox / (od + (c.r ?? 0))) * w;
+        az += (oz / (od + (c.r ?? 0))) * w;
+      }
+    }
+    const l = Math.hypot(ax, az) || 1;
+    return [ax / l, az / l];
   }
 }
 

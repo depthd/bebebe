@@ -15,6 +15,8 @@ import { world } from './ragdoll.js';
 import { TUNE } from '../config.js';
 
 const ANKLE_Y = DIM.hip - DIM.thigh - DIM.shin; // ankle joint height above the floor
+// heavy feet: the solver can't hold a 68 kg body still on 1.2 kg feet (they creep over the floor)
+const FOOT_KG = Number(new URLSearchParams(globalThis.location?.search).get('footkg') ?? 4);
 const G = 9.8;
 const PARTS = {
   // name: [half extents, center (standing rest pose), mass, parent, joint pivot, torque limit N·m]
@@ -26,7 +28,7 @@ const SIDES = [-1, 1]; // leg/arm 0 is on the -x side (his right), 1 on +x (his 
 for (const [i, s] of SIDES.entries()) {
   PARTS[`thigh${i}`] = [[0.065, DIM.thigh / 2, 0.075], [s * 0.085, DIM.hip - DIM.thigh / 2, 0], 7, 'pelvis', [s * 0.085, DIM.hip, 0], 280];
   PARTS[`shin${i}`] = [[0.06, DIM.shin / 2, 0.07], [s * 0.085, ANKLE_Y + DIM.shin / 2, 0], 4, `thigh${i}`, [s * 0.085, DIM.hip - DIM.thigh, 0], 280];
-  PARTS[`foot${i}`] = [[0.06, 0.03, 0.125], [s * 0.085, 0.03, 0.05], 1.2, `shin${i}`, [s * 0.085, ANKLE_Y, 0], 150];
+  PARTS[`foot${i}`] = [[0.06, 0.03, 0.125], [s * 0.085, 0.03, 0.05], FOOT_KG, `shin${i}`, [s * 0.085, ANKLE_Y, 0], 150];
   PARTS[`upper${i}`] = [[0.048, DIM.upper / 2, 0.052], [s * DIM.shoulderX, DIM.hip + DIM.shoulderY - DIM.upper / 2, 0], 2.5, 'torso', [s * DIM.shoulderX, DIM.hip + DIM.shoulderY, 0], 50];
   PARTS[`fore${i}`] = [[0.043, (DIM.fore + 0.09) / 2, 0.048], [s * DIM.shoulderX, DIM.hip + DIM.shoulderY - DIM.upper - (DIM.fore + 0.09) / 2, 0], 1.8, `upper${i}`, [s * DIM.shoulderX, DIM.hip + DIM.shoulderY - DIM.upper, 0], 28];
 }
@@ -356,7 +358,10 @@ export class Robot {
       if (vl > 12) v.scale(12 / vl, v);
     }
     const tilt = Math.acos(clamp(this.upright, -1, 1));
-    if (this.state === 'up' && (tilt > R.fallAt || this.c.y < 0.45)) this.fall();
+    if (this.state === 'up' && (tilt > R.fallAt || this.c.y < 0.45)) {
+      this.stats.why = (this.stats.why ?? '') + (tilt > R.fallAt ? 'T' : 'L');
+      this.fall();
+    }
     if (this.state !== 'up') return this.limp(h);
 
     // strength: drunk joints are weaker and slower; knocked hard, the legs give for a moment
@@ -429,7 +434,10 @@ export class Robot {
       g.t += h;
       const u = g.t / g.T;
       if (u < 0.7) this.place(g.swing, g.to, fwd, left, d);
-      if ((u > 0.5 && this.feet[g.swing].down) || u > 1.4) {
+      // down when it's touched the floor near where it was going (a foot that catches the floor on the way
+      // there just scuffs it), or when time's up
+      const fa = this.feet[g.swing].at, near = Math.hypot(fa.x - g.to.x, fa.z - g.to.z) < 0.12;
+      if ((u > 0.5 && this.feet[g.swing].down && (near || u > 0.9)) || u > 1.4) {
         g.swing = -1;
         g.dwell = moving ? 0.02 : 0.1;
       }
@@ -464,12 +472,13 @@ export class Robot {
         // swing: the foot along an arc to where it's going
         const u = g.t / g.T, e = smooth(u);
         const tgt = va.lerpVectors(g.from, g.to, e);
-        tgt.y = ANKLE_Y + R.stepHeight * Math.sin(Math.PI * Math.min(1, u)) - Math.max(0, u - 1) * 0.15;
+        const far = Math.min(1, Math.hypot(g.to.x - g.from.x, g.to.z - g.from.z) / 0.6); // long steps lift higher
+        tgt.y = ANKLE_Y + R.stepHeight * (1 + far) * Math.sin(Math.PI * Math.min(1, u)) - Math.max(0, u - 1) * 0.15;
         const H = vb.set(s * 0.085, 0.04, 0).applyQuaternion(qP).add(pp);
         const knee = legIK(H, tgt, fwd, qT, qS);
         // a swinging leg is light: it needs speed, not strength (a strong one stamps and bounces off the floor)
-        th.drive('b', qT, k, 110 * str, h, true);
-        this.knee(i, knee, k, 70 * str, h, 'swing');
+        th.drive('b', qT, k * 1.4, 170 * str, h, true);
+        this.knee(i, knee, k * 1.4, 110 * str, h, 'swing');
         ft.drive('b', yawQ(this.yawNow, qb), k, 25 * str, h, true);
       } else {
         // stance: the hips hold the pelvis, the knee the height; the ankle only keeps the leg from
@@ -518,7 +527,14 @@ export class Robot {
     // ---- the one helping hand (TUNE.robot.assist, 0 = none): a little torque that stands the upper body
     // up, only while his feet press on the floor, weaker drunk. It holds no weight and can't save a guy
     // whose feet aren't under him; it just makes a sober one less of a skittle
-    const asst = R.assist * (1 - 0.8 * d) * Math.min(1, (this.feet[0].n + this.feet[1].n) / (MASS * G));
+    // and a reflex (TUNE.robot.reflex): tipping past ~20°, a sober one catches himself for half a second, a
+    // drunk one hardly; then it needs time to come back, so a second shove right after still floors him
+    this.reflexCd = Math.max(0, (this.reflexCd ?? 0) - h);
+    if (this.reflexT > 0) {
+      if ((this.reflexT -= h) <= 0) this.reflexCd = 2.5;
+    } else if (tilt > 0.35 && this.reflexCd <= 0 && R.reflex > 0) this.reflexT = 0.6;
+    const load = Math.min(1, (this.feet[0].n + this.feet[1].n) / (MASS * G));
+    const asst = (R.assist + (this.reflexT > 0 ? R.reflex * (1 - d) : 0)) * (1 - 0.8 * d) * Math.max(load, this.reflexT > 0 ? 0.5 : 0);
     if (asst > 0) {
       for (const [name, share] of [['torso', 0.6], ['pelvis', 0.4]]) {
         const b = B[name];
@@ -545,17 +561,25 @@ export class Robot {
     const ex = xi.x - sup.x, ez = xi.z - sup.z;
     const f = ex * fwd.x + ez * fwd.z, l = ex * left.x + ez * left.z;
     const fa = this.feet[0].at, fb = this.feet[1].at;
-    const spread = Math.abs((fb.x - fa.x) * left.x + (fb.z - fa.z) * left.z) / 2;
+    const dx = fb.x - fa.x, dz = fb.z - fa.z;
+    const spread = Math.abs(dx * left.x + dz * left.z) / 2, reach = Math.abs(dx * fwd.x + dz * fwd.z) / 2; // half the stance, sideways / lengthways
     const m = 0.03 + 0.05 * d;
-    const crossed = ((fb.x - fa.x) * left.x + (fb.z - fa.z) * left.z) < 0.06;
+    const crossed = dx * left.x + dz * left.z < 0.06;
     // turning in place: the feet follow the hips
     const fy = Math.atan2(Math.sin(this.yawNow - this.footYaw()), Math.cos(this.yawNow - this.footYaw()));
-    if (Math.abs(f) < 0.1 + m && Math.abs(l) < spread + 0.05 + m && !crossed && Math.abs(fy) < 0.35) return -1;
-    if (Math.abs(fy) >= 0.35 && Math.abs(f) < 0.1 && Math.abs(l) < spread + 0.05) return g.next; // turning on the spot: left, right, left
+    // the heel is short: falling backwards he has to step sooner than falling forwards
+    const inside = f < reach + 0.1 + m && f > -(reach + 0.04 + m) && Math.abs(l) < spread + 0.05 + m;
+    // feet far apart (after a catch): the hips can't come up between them, the far foot comes in
+    if (inside && Math.hypot(dx, dz) > 0.45) {
+      const da = Math.hypot(xi.x - fa.x, xi.z - fa.z), db = Math.hypot(xi.x - fb.x, xi.z - fb.z);
+      return da > db ? 0 : 1;
+    }
+    if (inside && !crossed && Math.abs(fy) < 0.35) return -1;
+    if (Math.abs(fy) >= 0.35 && inside) return g.next; // turning on the spot: left, right, left
     if (crossed) return g.next;
     // a foot carrying most of the weight can't be lifted: the other one goes, across if it has to
     const n0 = this.feet[0].n, n1 = this.feet[1].n;
-    if (Math.abs(n0 - n1) > 0.3 * (n0 + n1)) return n0 < n1 ? 0 : 1;
+    if (Math.abs(n0 - n1) > 0.1 * (n0 + n1)) return n0 < n1 ? 0 : 1;
     if (Math.abs(l) > Math.abs(f)) return l > 0 ? 1 : 0;
     // forwards / backwards: the foot farther from where he's falling
     const da = Math.hypot(xi.x - fa.x, xi.z - fa.z), db = Math.hypot(xi.x - fb.x, xi.z - fb.z);
@@ -592,11 +616,19 @@ export class Robot {
     const o = this.feet[1 - i].at, xi = this.debug.xi;
     const px = o.x + fwd.x * 0.05, pz = o.z + fwd.z * 0.05;
     const w0 = Math.sqrt(G / Math.max(0.5, this.c.y));
-    const e = Math.exp(w0 * Math.max(0.05, g.T - g.t));
-    let tx = px + (xi.x - px) * e * (1 + R.placeGain), tz = pz + (xi.z - pz) * e * (1 + R.placeGain);
+    const walking = this.vd.lengthSq() > 0.04;
+    // where the capture point will be when the foot lands (it runs away exponentially), but a robot's
+    // catch is slower than the prediction: aim short of the full run, or the feet end up a split apart
+    const e = Math.min(R.lead, Math.exp(w0 * Math.max(0.05, g.T - g.t)));
+    const over = 1 + R.placeGain;
+    let tx = px + (xi.x - px) * e * over, tz = pz + (xi.z - pz) * e * over;
     const b = R.stepTime / (Math.exp(w0 * R.stepTime) - 1);
-    tx += -this.vd.x * b + left.x * s * R.stepWidth + g.miss.x;
-    tz += -this.vd.z * b + left.z * s * R.stepWidth + g.miss.z;
+    // out to his side: walking always (a gait needs its width); catching a fall only towards the fall
+    // (a foot put on the wrong side of it can't stop anything)
+    const side = (xi.x - px) * left.x + (xi.z - pz) * left.z;
+    const wide = walking || side * s > 0 ? R.stepWidth : 0;
+    tx += -this.vd.x * b + left.x * s * wide + g.miss.x;
+    tz += -this.vd.z * b + left.z * s * wide + g.miss.z;
     // not onto the other foot (crossing over is fine: that's a stumble), not further than a leg can reach
     const rx = tx - o.x, rz = tz - o.z;
     let fr = rx * fwd.x + rz * fwd.z, lt = rx * left.x + rz * left.z;
