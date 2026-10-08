@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Лаборатория пацанов</title>
+    <style>
+      :root { color-scheme: dark; }
+      html, body { margin: 0; height: 100%; background: #14161a; color: #e8e6e1; font: 14px/1.35 system-ui, sans-serif; overflow: hidden; }
+      #app { position: fixed; inset: 0; }
+      #panel { position: fixed; top: 10px; right: 10px; width: 300px; max-height: calc(100% - 20px); overflow: auto; background: rgba(20, 22, 26, 0.92); border: 1px solid #2c3038; border-radius: 10px; padding: 10px 12px; box-sizing: border-box; }
+      #panel h1 { font-size: 16px; margin: 0 0 6px; }
+      #panel p { margin: 0 0 8px; color: #9aa0aa; font-size: 12px; }
+      .row { display: grid; grid-template-columns: 1fr 52px; gap: 2px 8px; align-items: center; margin: 5px 0; }
+      .row label { font-size: 12px; color: #c9ccd2; }
+      .row output { font: 12px ui-monospace, monospace; text-align: right; color: #ffd27a; }
+      .row input { grid-column: 1 / 3; width: 100%; margin: 0; }
+      .btns { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+      button { background: #2a2f38; color: #e8e6e1; border: 1px solid #3a404c; border-radius: 6px; padding: 6px 9px; font: inherit; font-size: 13px; cursor: pointer; }
+      button:hover { background: #343a46; }
+      button.on { background: #6b4f16; border-color: #a8802c; }
+      #stats { font: 12px/1.5 ui-monospace, monospace; white-space: pre; color: #b9c0ca; margin-top: 6px; }
+      #hint { position: fixed; left: 12px; bottom: 10px; color: #9aa0aa; font-size: 12px; max-width: calc(100% - 340px); }
+      details summary { cursor: pointer; color: #9aa0aa; font-size: 12px; margin: 6px 0; }
+      @media (max-width: 700px) { #panel { width: auto; left: 10px; top: auto; bottom: 10px; max-height: 45%; } #hint { display: none; } }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <div id="panel">
+      <h1>Лаборатория пацанов</h1>
+      <p>Новая физика: держатся на своих ногах, ловят равновесие шагом. Крути и смотри. Числа — в config.js → TUNE.robot.</p>
+      <div id="sliders"></div>
+      <div class="btns">
+        <button id="push">Толкнуть</button>
+        <button id="shoveHard">Толкнуть сильно</button>
+        <button id="walk">Пусть ходят</button>
+        <button id="stop">Стоять</button>
+        <button id="reset">Сброс</button>
+        <button id="slow">Замедлить</button>
+        <button id="dbg">Точки</button>
+      </div>
+      <details><summary>Тонкая настройка</summary><div id="sliders2"></div></details>
+      <div id="stats"></div>
+    </div>
+    <div id="hint">Клик по полу — выбранный идёт туда (клик по пацану — выбрать). Правая кнопка — крутить камеру, колесо — зум. WASD — Олег (зелёный столб) толкается.</div>
+    <script type="module" src="/src/lab.js"></script>
+  </body>
+</html>

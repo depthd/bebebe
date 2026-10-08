@@ -301,9 +301,9 @@ export function updateDoors() {
 // needs more steps, which makes the next frame slower still. A slow frame takes fewer, longer steps instead
 // (up to 1/90 s), so the bodies keep real time. At 60 fps nothing changes (3 steps); measured on seeded
 // drunk nights at 24 fps: half the physics time, same falls, uprightness and lag behind the guy.
-const MAX_STEPS = 4;
+let MAX_STEPS = 4, H = 1 / 180;
+export const setSteps = (max, hz = 180) => ((MAX_STEPS = max), (H = 1 / hz));
 export function step(dt, before) {
-  const H = 1 / 180;
   let acc = (step.acc ?? 0) + Math.min(dt, 0.1);
   let n = Math.floor(acc / H), h = H;
   if (n > MAX_STEPS) {

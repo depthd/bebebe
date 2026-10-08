@@ -535,8 +535,11 @@ export function createRig(body, { m, sk, style }) {
     knee.position.y = -DIM.thigh;
     hip.add(knee);
     knee.add(new THREE.Mesh(vSlice(new THREE.BoxGeometry(0.12, DIM.shin, 0.14).translate(0, -DIM.shin / 2, 0), 0, 0.5), lm));
-    knee.add(new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.06, 0.25).translate(0, -DIM.shin - 0.02, 0.05), shoe));
-    return { hip, knee };
+    const ankle = new THREE.Group(); // only the physical body (world/robot.js) turns the foot
+    ankle.position.y = -DIM.shin;
+    knee.add(ankle);
+    ankle.add(new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.06, 0.25).translate(0, -0.02, 0.05), shoe));
+    return { hip, knee, ankle };
   });
 
   const arms = SIDES.map((s) => {

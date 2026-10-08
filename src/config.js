@@ -96,6 +96,19 @@ export const TUNE = {
   // fallAt he goes down. Pushes (Oleg, bumps, puddles) are kicks to this, not instant falls.
   balance: { g: 9.8, kp: 42, kd: 9, noise: 2.4, stepAt: 0.17, stepLen: 0.22, fallAt: 0.48 },
 
+  // the physical guys (world/robot.js, `?phys=new`; tune live in lab.html). Joints are servos: `strength`
+  // scales every joint's torque limit, `speed` how fast a joint chases its target (1/s). Walking is
+  // stepping: a step every `stepTime` s, the foot put where the body is falling (`placeGain`: how far past
+  // that point, to stop for sure), `walkSpeed` m/s. Drunk (x drunk 0..1): weaker joints (`weak`), steps late
+  // (`late` s) and off target (`sloppy` m), the sense of up wanders (`wander` rad); `fallAt` = torso tilt
+  // (rad) that counts as down, `lie` s on the floor before getting up, `retry` = chance the first try fails.
+  // `assist`: the only help from outside, N·m that stand the upper body up while the feet press on the floor
+  // (0 = none, he's on his own)
+  robot: {
+    strength: 1, speed: 14, stepTime: 0.36, stepHeight: 0.09, stepWidth: 0.1, placeGain: 0.05, walkSpeed: 1.0,
+    crouch: 0.02, ankle: 2.5, assist: 80, weak: 0.45, late: 0.25, sloppy: 0.12, wander: 0.22, fallAt: 1.0, lie: [1.2, 2.4], retry: 0.6,
+  },
+
   // drunk physics: bodies push each other apart; running into a drunk guy knocks him over (knockOver:
   // speed/5 x (0.35 + drunk) above it); two drunks (drunk sum > bumpDrunk) bumping may fall (bumpFall);
   // puddles are slippery (slip + drunk/200); a fall makes the others laugh (laugh fun each);
