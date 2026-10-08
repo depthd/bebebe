@@ -104,6 +104,7 @@ class Walker {
   // off the sofa / chair: standing on his feet where he is
   standUp() {
     this.leaveSeat();
+    this.stay = null;
     this.spot = null;
     this.y = 0;
     this.figure.setPose?.('stand');
@@ -114,6 +115,7 @@ class Walker {
     const r = route(this.node, this.pos, spot.node, spot.p, blocked);
     if (!r) return false;
     if (this.rag?.isRobot) r.points[r.points.length - 1] = this.approach(spot); // a body can't walk into the sofa
+    this.stay = null;
     if (this.canOpenDoors) {
       if (r.nodes.includes('balconyDoor')) this.game.doors.balcony.setOpen(true);
       if (r.nodes.includes('bathDoor')) this.game.doors.bath.setOpen(true);
@@ -154,11 +156,11 @@ class Walker {
     this.mode = 'idle';
     this.node = this.target.node;
     this.spot = this.target;
-    // a body sits down on the seat from where it stands
+    // a body sits down on the seat from where it stands; standing, it stays where it stopped
     if (this.rag?.isRobot && this.target.pose) {
       this.startBlend();
       this.pos = [...this.target.p];
-    }
+    } else if (this.rag?.isRobot) this.stay = [...this.pos];
     this.arrive(this.target);
     const cb = this.onArrive;
     this.onArrive = null;
@@ -1054,6 +1056,14 @@ export class Friend extends Walker {
     else if (!this.problem) {
       this.leaveSoon = (this.leaveSoon ?? 0) - dt;
       if (this.leaveSoon <= 0) this.chooseNext();
+    }
+
+    // a body standing about staggers off bit by bit (each catch is a step somewhere): once he's half a metre
+    // from where he stopped, he walks back
+    if (this.rag?.isRobot && this.stay && this.mode === 'idle' && !this.fallen && !this.follow && this.rag.state === 'up') {
+      const d = Math.hypot(this.stay[0] - this.pos[0], this.stay[1] - this.pos[1]);
+      this.drifted = d > 0.5 || (this.drifted && d > 0.15);
+      if (this.drifted) this.rag.goal = this.stay;
     }
 
     this.def.tick?.(this, g, dt);
