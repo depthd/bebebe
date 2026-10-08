@@ -65,8 +65,10 @@ Lab numbers (fixed 1/30 s frames, like a weak laptop; `npm run robot`):
 | random shoves 0.6–1.8 m/s, 16 per guy | 8 of 58 go down (was 18 of 43) |
 | walking speed | about 0.4 m/s asked 1.0: a shuffle |
 
-In the game with `?phys=new` (start of night 1, sober, 3 seeded runs × 90 s, 4 guys): **5 falls**, down from 39
-at the start of the night and 13 before the last fix. No teleports (none exist any more), nobody inside the
+In the game with `?phys=new` (start of night 1, sober, 3 seeded runs × 90 s, 4 guys): **3–5 falls**, down from
+39 at the start of the night and 13 before the last fixes. Everyone half drunk: 9 falls (one per guy every two
+minutes); at 80%: 24 (one every 45 s). Slow as they walk, they get where they're going as often as the old ones
+(41 arrivals vs 31 in the same runs). No teleports (none exist any more), nobody inside the
 furniture, real falls and get-ups. What's left: bumping into a wall or each other while turning, and a guy
 who is already a bit drunk.
 
@@ -82,12 +84,15 @@ What made the difference, in order:
    ended the endless backward shuffle that was most of the "falls out of nowhere".
 5. Standing spots next to furniture keep 0.5 m clear, so a step forward doesn't put a knee into the table.
 
-Cost: physics 1.8–2.5 ms per frame vs 1.6 ms for the old ragdolls (headless, 4 guys, 30 fps).
+Cost: physics 1.8–2.5 ms per frame vs 1.6 ms for the old ragdolls (headless, 4 guys, 30 fps). 8 or 10 solver
+iterations instead of 12 save up to 20% but more guys go down from shoves (12 and 10 of 58 vs 8), and the
+world is shared with the old ragdolls: kept at 12.
 
 ## Next
 
-- Walking is slow (a robot shuffle). `stride` > 1 lands walking steps further back and speeds him up: 1.5 is
-  about +25% in the lab, but in the game it doubles the falls (10 vs 5), and 2.2 overshoots its goal. Kept at 1.
+- Walking is slow (a robot shuffle, ~0.4 m/s). Faster costs falls and buys nothing: `stride` 1.5 doubles the
+  falls in the game (10 vs 5); `walkSpeed` 1.4 (+25% in the lab) gives 8 falls vs 3 and fewer arrivals (32 vs
+  41); 1.4 with `stride` 1.25 (+55%) 7 falls, 40 arrivals. Kept at 1.0 / 1.
 - Drunk: the legs were drunk too early (half drunk, a fall every ~23 s in the game, where the old ragdolls
   never fell); now on the CONCEPT curve, see Drunk above.
 - Guys turning next to walls and each other.
