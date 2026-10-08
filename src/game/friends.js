@@ -81,16 +81,19 @@ class Walker {
     this.blend = { x: r.x, y: r.y, z: r.z, yaw: this.figure.root.rotation.y, t: 0, dur };
   }
   // where a body can stand to use this spot: the spot itself, or (a seat, a bed, a spot inside furniture)
-  // the first free point from it towards its nav node
+  // the first free point from it towards its nav node. Standing, he wants room for a step: a foot put out
+  // to catch himself mustn't land his knee in the table
   approach(spot) {
     const g = this.game, [px, pz] = spot.p;
-    if (!spot.pose && !g.bodyBlocked(px, pz, 0.3)) return spot.p;
     const [nx, nz] = NAV[spot.node] ?? spot.p;
-    for (let k = 1; k <= 24; k++) {
-      const t = k / 24, x = px + (nx - px) * t, z = pz + (nz - pz) * t;
-      if (!g.bodyBlocked(x, z, 0.3)) return [x, z];
+    for (const room of spot.pose ? [0.3] : [0.5, 0.3]) {
+      for (let k = 0; k <= 24; k++) {
+        const t = k / 24, x = px + (nx - px) * t, z = pz + (nz - pz) * t;
+        if (k === 0 && spot.pose) continue;
+        if (!g.bodyBlocked(x, z, room)) return [x, z];
+      }
     }
-    return [nx, nz];
+    return spot.pose ? [nx, nz] : spot.p;
   }
   // a physical body leaving a seat: it stands up next to it, the figure slides there
   leaveSeat() {

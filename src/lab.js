@@ -156,6 +156,9 @@ slider('sliders', 'Время шага, с', ...tune('stepTime'), 0.2, 0.7, 0.01
 slider('sliders', 'Сила толчка, м/с', () => pushStrength, (v) => (pushStrength = v), 0.3, 5, 0.1);
 slider('sliders2', 'Быстрота суставов', ...tune('speed'), 3, 30, 0.5);
 slider('sliders2', 'Куда ставить ногу (поправка)', ...tune('placeGain'), 0, 0.4, 0.01);
+slider('sliders2', 'Длина шага при ходьбе', ...tune('stride'), 0.5, 2.5, 0.05);
+slider('sliders2', 'Ловит: нога на месте к доле шага', ...tune('catchAt'), 0.5, 1, 0.01);
+slider('sliders2', 'Шаг назад дальше, м', ...tune('backStep'), 0, 0.15, 0.005);
 slider('sliders2', 'Высота шага, м', ...tune('stepHeight'), 0.02, 0.2, 0.005);
 slider('sliders2', 'Ширина шага, м', ...tune('stepWidth'), 0.04, 0.2, 0.005);
 slider('sliders2', 'Присед, м', ...tune('crouch'), 0, 0.12, 0.005);

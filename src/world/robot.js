@@ -480,8 +480,9 @@ export class Robot {
     for (const [i, s] of SIDES.entries()) {
       const th = S[`thigh${i}`], sh = S[`shin${i}`], ft = S[`foot${i}`];
       if (g.swing === i) {
-        // swing: the foot along an arc to where it's going
-        const u = g.t / g.T, e = smooth(u);
+        // swing: the foot along an arc to where it's going. A catching foot gets there over the floor first and
+        // then comes down (one still travelling when it lands falls short, and a short catch is no catch)
+        const u = g.t / g.T, e = smooth(Math.min(1, u / (moving ? 1 : R.catchAt)));
         const tgt = va.lerpVectors(g.from, g.to, e);
         const far = Math.min(1, Math.hypot(g.to.x - g.from.x, g.to.z - g.from.z) / 0.6); // long steps lift higher
         tgt.y = ANKLE_Y + R.stepHeight * (1 + far) * Math.sin(Math.PI * Math.min(1, u)) - Math.max(0, u - 1) * 0.15;
@@ -516,9 +517,25 @@ export class Robot {
       const kp = moving ? 0 : 600 * str, kd = 250 * str;
       const fx = -kp * (this.seenC.x - sup.x) - kd * (this.seenV.x - this.vd.x);
       const fz = -kp * (this.seenC.z - sup.z) - kd * (this.seenV.z - this.vd.z);
-      // gravity tips him around his ankles: hold that too (the centre of pressure goes under the centre of mass)
+      // gravity tips him around his ankles: hold that too (the centre of pressure goes under the centre of mass).
+      // Not along the line between his feet, though: there the floor holds him up by how the weight shares
+      // between them (counting that too rolls him off a perfectly good stance after a step back)
       const ax = sup.x - fwd.x * 0.05, az = sup.z - fwd.z * 0.05;
-      const df = (this.seenC.x - ax) * fwd.x + (this.seenC.z - az) * fwd.z, dl = (this.seenC.x - ax) * left.x + (this.seenC.z - az) * left.z;
+      // (side by side the stance is narrow and stiff, so there it counts as before: weighted by how far one
+      // foot is in front of the other)
+      let ex = this.seenC.x - ax, ez = this.seenC.z - az;
+      {
+        const a0 = this.feet[0].at, a1 = this.feet[1].at;
+        let ux = a1.x - a0.x, uz = a1.z - a0.z;
+        const L = Math.hypot(ux, uz) || 1;
+        ux /= L;
+        uz /= L;
+        const ea = ex * ux + ez * uz, out = Math.sign(ea) * Math.max(0, Math.abs(ea) - L / 2);
+        const w = Math.abs(ux * fwd.x + uz * fwd.z);
+        ex += (out - ea) * ux * w;
+        ez += (out - ea) * uz * w;
+      }
+      const df = ex * fwd.x + ez * fwd.z, dl = ex * left.x + ez * left.z;
       const W = MASS * G;
       const sagAll = -W * df + Hc * (fx * fwd.x + fz * fwd.z);
       const latAll = W * dl - Hc * (fx * left.x + fz * left.z);
@@ -640,8 +657,15 @@ export class Robot {
     // (a foot put on the wrong side of it can't stop anything)
     const side = (xi.x - px) * left.x + (xi.z - pz) * left.z;
     const wide = walking || side * s > 0 ? R.stepWidth : 0;
-    tx += -this.vd.x * b + left.x * s * wide + g.miss.x;
-    tz += -this.vd.z * b + left.z * s * wide + g.miss.z;
+    tx += -this.vd.x * b * R.stride + left.x * s * wide + g.miss.x;
+    tz += -this.vd.z * b * R.stride + left.z * s * wide + g.miss.z;
+    // caught falling backwards he has only his heels to stand on: the foot goes past where he'd stop, so his
+    // weight ends up over the middle of it, not over the heel he can't push with
+    const back = (xi.x - px) * fwd.x + (xi.z - pz) * fwd.z;
+    if (!walking && back < 0) {
+      tx -= fwd.x * R.backStep;
+      tz -= fwd.z * R.backStep;
+    }
     // not onto the other foot (crossing over is fine: that's a stumble), not further than a leg can reach
     const rx = tx - o.x, rz = tz - o.z;
     let fr = rx * fwd.x + rz * fwd.z, lt = rx * left.x + rz * left.z;
