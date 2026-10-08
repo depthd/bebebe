@@ -17,7 +17,7 @@ import { TUNE } from '../config.js';
 const ANKLE_Y = DIM.hip - DIM.thigh - DIM.shin; // ankle joint height above the floor
 const G_STATIC = 1; // ragdoll.js: walls, furniture and the floor
 // heavy feet: the solver can't hold a 68 kg body still on 1.2 kg feet (they creep over the floor)
-const FOOT_KG = Number(new URLSearchParams(globalThis.location?.search).get('footkg') ?? 4);
+const FOOT_KG = 4;
 const G = 9.8;
 const PARTS = {
   // name: [half extents, center (standing rest pose), mass, parent, joint pivot, torque limit N·m]

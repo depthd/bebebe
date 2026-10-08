@@ -11,6 +11,7 @@ import { CHARS } from './game/friends.js';
 const params = new URLSearchParams(location.search);
 if (params.get('steps')) setSteps(Number(params.get('steps')), Number(params.get('hz') ?? 180));
 if (params.get('iters')) world.solver.iterations = Number(params.get('iters'));
+for (const k of ['frictionEquationRelaxation', 'frictionEquationStiffness', 'contactEquationRelaxation', 'contactEquationStiffness']) if (params.get(k)) world.defaultContactMaterial[k] = Number(params.get(k));
 const R = TUNE.robot;
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: params.has('capture') });
 renderer.setPixelRatio(Math.min(2, devicePixelRatio));

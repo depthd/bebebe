@@ -61,7 +61,7 @@ try {
       };
     }, seed);
     if (process.env.TUNE) await page.addInitScript((t) => (window.TUNEX = JSON.parse(t)), process.env.TUNE);
-    await page.goto(`${url}lab.html?manual&capture${process.env.CAM ? '&cam=' + process.env.CAM : ''}${process.env.DBG ? '&dbg' : ''}${process.env.FI ? '&fi=' + process.env.FI : ''}${process.env.FOOTKG ? '&footkg=' + process.env.FOOTKG : ''}${process.env.ITERS ? '&iters=' + process.env.ITERS : ''}${process.env.STEPS ? '&steps=' + process.env.STEPS + '&hz=' + (process.env.HZ ?? 180) : ''}`, { waitUntil: 'load', timeout: 120000 });
+    await page.goto(`${url}lab.html?manual&capture${process.env.CAM ? '&cam=' + process.env.CAM : ''}${process.env.DBG ? '&dbg' : ''}${process.env.FI ? '&fi=' + process.env.FI : ''}${process.env.ITERS ? '&iters=' + process.env.ITERS : ''}${process.env.Q ? '&' + process.env.Q : ''}${process.env.STEPS ? '&steps=' + process.env.STEPS + '&hz=' + (process.env.HZ ?? 180) : ''}`, { waitUntil: 'load', timeout: 120000 });
     await page.waitForFunction(() => window.__lab, null, { timeout: 120000 });
     await page.evaluate((d) => {
       const L = window.__lab;
