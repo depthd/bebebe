@@ -1243,8 +1243,8 @@ export class Game {
     moveOleg(ox, oz, (ox - last[0]) / Math.max(dt, 1e-3), (oz - last[1]) / Math.max(dt, 1e-3));
     this.lastOleg = [ox, oz];
     updateDoors();
-    physicsStep(dt, () => {
-      for (const f of this.friends) if (f.rag?.active) f.rag.control(f.pos, f.drunk / 100, f.mode === 'walk');
+    physicsStep(dt, (h) => {
+      for (const f of this.friends) if (f.rag?.active) f.rag.control(f.pos, f.drunk / 100, f.mode === 'walk', h);
     });
     for (const f of this.friends) {
       f.physicsTick(dt);

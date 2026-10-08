@@ -179,15 +179,15 @@ export class Ragdoll {
   }
 
   // per physics tick: motors, cerebellum, walking pull, drunk shoves
-  control(target, drunk, walking) {
+  control(target, drunk, walking, h = 1 / 180) {
     if (!this.active || !this.kin) return;
     if (this.grace > 0) {
       // just got up: the help fades out over a couple of seconds
-      this.grace -= 1 / 180;
+      this.grace -= h;
       this.assist = Math.max(0, 0.8 * (this.grace / 2));
     }
     const d = Math.min(1, drunk);
-    this.stun = Math.max(0, (this.stun ?? 0) - 1 / 180);
+    this.stun = Math.max(0, (this.stun ?? 0) - h);
     const limp = Math.max(this.limp, this.stun > 0 ? 0.7 : 0);
     const strength = Math.max(0.02, (1 - 0.4 * d) * (1 - limp) + this.assist);
     const zeta = 1 - 0.45 * d; // drunk: springy, overshooting joints
@@ -252,7 +252,7 @@ export class Ragdoll {
     // drunk: the room sways. A slow drift (seconds, not jitter) leans him one way, then another;
     // past a point the motors can't win and down he goes
     const sw = (this.sway ??= { x: 0, z: 0 });
-    const h = 1 / 180, tau = 0.8;
+    const tau = 0.8;
     sw.x += (-sw.x / tau) * h + (Math.random() - 0.5) * 2 * Math.sqrt(h) * 1.6;
     sw.z += (-sw.z / tau) * h + (Math.random() - 0.5) * 2 * Math.sqrt(h) * 1.6;
     const amp = this.swayAmp * (0.25 * d + 0.75 * d * d * d) * (walking ? 1.3 : 1) * (1 - this.limp);
@@ -297,13 +297,23 @@ export function updateDoors() {
   for (const { c, body } of doorBodies) body.collisionResponse = c.enabled !== false && !c.floor;
 }
 
+// 1/180 s steps (what the motors are tuned for), but at most MAX_STEPS per frame: otherwise a slow frame
+// needs more steps, which makes the next frame slower still. A slow frame takes fewer, longer steps instead
+// (up to 1/90 s), so the bodies keep real time. At 60 fps nothing changes (3 steps); measured on seeded
+// drunk nights at 24 fps: half the physics time, same falls, uprightness and lag behind the guy.
+const MAX_STEPS = 4;
 export function step(dt, before) {
-  const h = 1 / 180;
+  const H = 1 / 180;
   let acc = (step.acc ?? 0) + Math.min(dt, 0.1);
-  while (acc >= h) {
+  let n = Math.floor(acc / H), h = H;
+  if (n > MAX_STEPS) {
+    n = MAX_STEPS;
+    h = Math.min(1 / 90, acc / n);
+  }
+  for (let i = 0; i < n; i++) {
     before?.(h);
     world.step(h);
     acc -= h;
   }
-  step.acc = acc;
+  step.acc = Math.min(acc, H); // below 22 fps even long steps can't keep up: that time is dropped
 }
