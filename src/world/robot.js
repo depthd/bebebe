@@ -598,7 +598,7 @@ export class Robot {
     // turning in place: the feet follow the hips
     const fy = Math.atan2(Math.sin(this.yawNow - this.footYaw()), Math.cos(this.yawNow - this.footYaw()));
     // the heel is short: falling backwards he has to step sooner than falling forwards
-    const inside = f < reach + 0.1 + m && f > -(reach + 0.04 + m) && Math.abs(l) < spread + 0.05 + m;
+    const inside = f < reach + 0.1 + m && f > -(reach + (TUNE.robot.backAt ?? 0.04) + m) && Math.abs(l) < spread + 0.05 + m;
     // feet far apart (after a catch): the hips can't come up between them, the far foot comes in
     if (inside && Math.hypot(dx, dz) > 0.45) {
       const da = Math.hypot(xi.x - fa.x, xi.z - fa.z), db = Math.hypot(xi.x - fb.x, xi.z - fb.z);
