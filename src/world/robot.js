@@ -410,7 +410,7 @@ export class Robot {
     const dy = Math.atan2(Math.sin(yw - this.yawNow), Math.cos(yw - this.yawNow));
     this.yawNow += clamp(dy, -(moving ? 1.2 : 0.8) * h, (moving ? 1.2 : 0.8) * h);
     // drunk: his sense of up wanders, and he leans with it
-    const tau = 1.2, sig = R.wander * d * Math.sqrt(2 / tau);
+    const tau = 1.2, sig = R.wander * (R.swayRaw ? clamp(this.drunk, 0, 1) : d) * Math.sqrt(2 / tau);
     this.wander.x += (-this.wander.x / tau) * h + sig * Math.sqrt(h) * gauss();
     this.wander.z += (-this.wander.z / tau) * h + sig * Math.sqrt(h) * gauss();
     // the pelvis he wants: level (plus the animation's small sway), facing yawNow, leaning into the walk
