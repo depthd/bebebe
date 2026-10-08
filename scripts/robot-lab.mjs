@@ -93,8 +93,8 @@ try {
         L.camera.position.set(-2.2, 1.5, 2.2);
         L.controls.target.set(-3.3, 0.7, 0);
       } else if (cam === 'mid') {
-        L.camera.position.set(0.2, 1.7, 4.6);
-        L.controls.target.set(0, 0.75, -0.3);
+        L.camera.position.set(0.2, 2.3, 6.6);
+        L.controls.target.set(0, 0.6, -0.2);
       } else if (cam === 'side') {
         L.camera.position.set(-5.8, 1.1, 1.0);
         L.controls.target.set(-3.3, 0.75, 0.9);
