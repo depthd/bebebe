@@ -15,6 +15,7 @@ import { world } from './ragdoll.js';
 import { TUNE } from '../config.js';
 
 const ANKLE_Y = DIM.hip - DIM.thigh - DIM.shin; // ankle joint height above the floor
+const G_STATIC = 1; // ragdoll.js: walls, furniture and the floor
 // heavy feet: the solver can't hold a 68 kg body still on 1.2 kg feet (they creep over the floor)
 const FOOT_KG = Number(new URLSearchParams(globalThis.location?.search).get('footkg') ?? 4);
 const G = 9.8;
@@ -36,6 +37,7 @@ const MASS = Object.values(PARTS).reduce((m, p) => m + p[2], 0);
 const FOOT_ANKLE = new THREE.Vector3(0, ANKLE_Y - 0.03, -0.05); // the ankle in the foot's own frame
 const WMAX = 20; // fastest a joint turns (rad/s)
 const HIP_MASK = [1, 0.2, 1];
+const BEND = { torso: 0.12, head: 0.35, pelvis: 0.08 }; // most the animation may bend a standing body (rad)
 const REACH = 0.75; // longest step, foot to foot (m)
 const LEG = DIM.thigh + DIM.shin - 0.02;
 
@@ -176,7 +178,10 @@ export class Robot {
     bit = bit === 16 ? 2 : bit * 2;
     this.bodies = {};
     for (const [name, [he, c, mass]] of Object.entries(PARTS)) {
-      const b = new CANNON.Body({ mass, linearDamping: 0.02, angularDamping: 0.08, collisionFilterGroup: this.group, collisionFilterMask: -1 ^ this.group });
+      // arms pass through furniture and walls (a gesture over the table shouldn't shove him off his feet);
+      // they still hit people
+      const arm = name.startsWith('upper') || name.startsWith('fore');
+      const b = new CANNON.Body({ mass, linearDamping: 0.02, angularDamping: 0.08, collisionFilterGroup: this.group, collisionFilterMask: -1 ^ this.group ^ (arm ? G_STATIC : 0) });
       // the shin's box stops short of the ankle, so a leaning shin doesn't prop itself on the floor by a corner
       if (name.startsWith('shin')) b.addShape(new CANNON.Box(new CANNON.Vec3(he[0], he[1] - 0.04, he[2])), new CANNON.Vec3(0, 0.04, 0));
       else b.addShape(new CANNON.Box(new CANNON.Vec3(...he)));
@@ -275,6 +280,12 @@ export class Robot {
     this.kin ??= { q: {}, pelvisPos: new THREE.Vector3() };
     for (const name of Object.keys(PARTS)) (this.kin.q[name] ??= new THREE.Quaternion()).copy(this.joint(name).quaternion);
     this.kin.pelvisPos.copy(this.rig.pelvis.position);
+    // a body on its own feet can't throw itself about like the animation (a belly laugh would put him on his
+    // back): the spine and the neck bend only so far
+    for (const [name, max] of [['torso', BEND.torso], ['head', BEND.head], ['pelvis', BEND.pelvis]]) {
+      const q = this.kin.q[name], a = 2 * Math.acos(Math.min(1, Math.abs(q.w)));
+      if (a > max) q.slerp(IDENT, 1 - max / a);
+    }
   }
 
   get pelvis() {
@@ -396,7 +407,7 @@ export class Robot {
     const yw = moving ? Math.atan2(this.vd.x, this.vd.z) : this.yawWant;
     this.yawNow ??= yw;
     const dy = Math.atan2(Math.sin(yw - this.yawNow), Math.cos(yw - this.yawNow));
-    this.yawNow += clamp(dy, -1.2 * h, 1.2 * h);
+    this.yawNow += clamp(dy, -(moving ? 1.2 : 0.8) * h, (moving ? 1.2 : 0.8) * h);
     // drunk: his sense of up wanders, and he leans with it
     const tau = 1.2, sig = R.wander * d * Math.sqrt(2 / tau);
     this.wander.x += (-this.wander.x / tau) * h + sig * Math.sqrt(h) * gauss();
@@ -580,7 +591,9 @@ export class Robot {
     // a foot carrying most of the weight can't be lifted: the other one goes, across if it has to
     const n0 = this.feet[0].n, n1 = this.feet[1].n;
     if (Math.abs(n0 - n1) > 0.1 * (n0 + n1)) return n0 < n1 ? 0 : 1;
-    if (Math.abs(l) > Math.abs(f)) return l > 0 ? 1 : 0;
+    // sideways: the far leg crosses over (lifting the near one would take the floor away from the side he
+    // falls to); TUNE.robot.cross = 0 steps out with the near one instead
+    if (Math.abs(l) > Math.abs(f)) return (l > 0) === !TUNE.robot.cross ? 1 : 0;
     // forwards / backwards: the foot farther from where he's falling
     const da = Math.hypot(xi.x - fa.x, xi.z - fa.z), db = Math.hypot(xi.x - fb.x, xi.z - fb.z);
     return da > db ? 0 : 1;
@@ -619,7 +632,7 @@ export class Robot {
     const walking = this.vd.lengthSq() > 0.04;
     // where the capture point will be when the foot lands (it runs away exponentially), but a robot's
     // catch is slower than the prediction: aim short of the full run, or the feet end up a split apart
-    const e = Math.min(R.lead, Math.exp(w0 * Math.max(0.05, g.T - g.t)));
+    const ex = Math.exp(w0 * Math.max(0.05, g.T - g.t)), e = walking ? ex : Math.min(R.lead, ex);
     const over = 1 + R.placeGain;
     let tx = px + (xi.x - px) * e * over, tz = pz + (xi.z - pz) * e * over;
     const b = R.stepTime / (Math.exp(w0 * R.stepTime) - 1);

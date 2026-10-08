@@ -26,6 +26,9 @@ const pickWeighted = (entries) => {
 
 // ---------- walking ----------
 
+// a physical body steering along its path keeps this clear of the others (m, weight) and of furniture and walls
+const AVOID = { guy: 1.2, guyW: 2.4, wall: 0.55, wallW: 1.6 };
+
 class Walker {
   constructor(game, figure, speed, canOpenDoors) {
     this.game = game;
@@ -193,8 +196,8 @@ class Walker {
     for (const o of [...g.friends, { pos: g.olegPos, rag: { active: true } }]) {
       if (o === this || !o.rag?.active) continue;
       const ox = x - o.pos[0], oz = z - o.pos[1], od = Math.hypot(ox, oz);
-      if (od > 1e-3 && od < 1) {
-        const w = 1.6 * (1 - od);
+      if (od > 1e-3 && od < AVOID.guy) {
+        const w = AVOID.guyW * (1 - od / AVOID.guy);
         ax += (ox / od) * w;
         az += (oz / od) * w;
       }
@@ -208,8 +211,8 @@ class Walker {
         [cx, cz] = [sx + vx * t, sz + vz * t];
       } else [cx, cz] = [Math.max(c.x0, Math.min(c.x1, x)), Math.max(c.z0, Math.min(c.z1, z))];
       const ox = x - cx, oz = z - cz, od = Math.hypot(ox, oz) - (c.r ?? 0);
-      if (od > 1e-3 && od < 0.5) {
-        const w = 1.2 * (1 - od / 0.5) * near;
+      if (od > 1e-3 && od < AVOID.wall) {
+        const w = AVOID.wallW * (1 - od / AVOID.wall) * near;
         ax += (ox / (od + (c.r ?? 0))) * w;
         az += (oz / (od + (c.r ?? 0))) * w;
       }
