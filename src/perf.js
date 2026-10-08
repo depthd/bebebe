@@ -172,8 +172,10 @@ export function createPerf({ renderer, scene, fx, filters, game, world, params }
   let bench = null; // { i, phase: 'warm'|'measure', until, rows }
   // a hidden tab stops the frames: whatever step was running is measured again from its warm-up
   document.addEventListener('visibilitychange', () => {
-    if (!bench || document.hidden) return;
+    if (document.hidden) return;
     prev = 0;
+    live.length = gpuLive.length = 0;
+    if (!bench) return;
     rec = null;
     if (bench.i >= 0) bench.phase = 'warm';
     bench.until = performance.now() + WARM * 1000;
@@ -203,6 +205,7 @@ export function createPerf({ renderer, scene, fx, filters, game, world, params }
     }
     if (bench.phase === 'warm' && bench.i >= 0) {
       rec = { id: bench.i, dt: [], logic: [], phys: [], steps: [], render: [], gpu: [] };
+      prev = 0; // the interval into this frame may hold the warm-up's shader compile: not measured
       bench.phase = 'measure';
       bench.until = now + MEASURE * 1000;
       return;
@@ -213,24 +216,31 @@ export function createPerf({ renderer, scene, fx, filters, game, world, params }
     bench.phase = 'warm';
     bench.until = now + WARM * 1000;
   }
+  // No single "GPU or CPU" label: without a GPU timer (Firefox) the time spent sending draw calls and
+  // the time waiting for the GPU look the same from JS. What the steps do show is how many ms each one
+  // saves, so the verdict lists that, plus the two clear signals (resolution -> GPU, physics -> CPU).
   function verdict(rows) {
     const by = Object.fromEntries(rows.map((r) => [r.id, r]));
-    const base = (by.base.ms + by.base2.ms) / 2;
-    const out = [];
-    if (base < 18.5) return ['Тормозов нет: игра держит около 60 FPS.'];
-    const cpuOnly = by.norender.ms;
-    const res = base / by.res50.ms;
-    if (cpuOnly > base * 0.8) out.push(`Упор в процессор: даже совсем без отрисовки кадр занимает ${f1(cpuOnly)} мс (не больше ${fps(cpuOnly)} FPS), из них логика игры ${f1(by.norender.logic)} мс, физика ${f1(by.norender.phys)} мс.`);
-    else if (res >= 1.3) out.push(`Упор в видеокарту: при 50% разрешения FPS ${fps(base)} → ${fps(by.res50.ms)}, а логика игры занимает всего ${f1(by.base.logic)} мс из ${f1(base)} мс кадра.`);
-    else out.push(`Ни разрешение, ни логика по отдельности не главное: похоже, упор в отрисовку на стороне процессора (драйвер, число вызовов отрисовки). Без отрисовки ${fps(cpuOnly)} FPS, при 50% разрешения ${fps(by.res50.ms)} FPS.`);
+    const base = (by.base.ms + by.base2.ms) / 2, p95 = Math.max(by.base.p95, by.base2.p95);
+    if (base < 18.5 && p95 < 25) return ['Тормозов нет: игра держит около 60 FPS.'];
+    const b = by.base, out = [];
+    out.push(`Кадр ${f1(base)} мс (${fps(base)} FPS): логика игры ${f1(b.logic)} мс, из них физика тел ${f1(b.phys)} мс; отрисовка ${f1(b.render)} мс (это и отправка команд, и ожидание видеокарты).`);
+    if (base < 18.5) out.push(`В среднем 60 FPS, но бывают подлагивания: худшие 5% кадров ${f1(p95)} мс.`);
+    const saved = rows
+      .filter((r) => !['base', 'base2', 'min', 'norender'].includes(r.id))
+      .map((r) => ({ r, ms: base - r.ms }))
+      .filter((x) => x.ms > base * 0.07)
+      .sort((x, y) => y.ms - x.ms);
+    out.push(saved.length ? `Больше всего ускоряет: ${saved.slice(0, 4).map((x) => `${x.r.name.toLowerCase()} (−${f1(x.ms)} мс, ${fps(x.r.ms)} FPS)`).join(', ')}.` : 'По отдельности ни один пункт заметно не ускоряет.');
+    const share = (id) => (base - by[id].ms) / base;
+    const hints = [];
+    if (share('res50') > 0.15) hints.push('от разрешения зависит заметно: часть кадра упирается в видеокарту');
+    if (share('nophys') > 0.15) hints.push('физика тел заметно грузит процессор');
+    if (share('nomirror') > 0.15) hints.push('зеркало в ванной стоит дорого');
+    if (hints.length) out.push(`Выводы: ${hints.join('; ')}.`);
+    out.push(`Всё на минимум: ${fps(by.min.ms)} FPS. Без отрисовки совсем: ${fps(by.norender.ms)} FPS (это потолок от логики и физики).`);
     const drift = by.base2.ms / by.base.ms;
-    if (drift > 1.15 || drift < 0.87) out.push(`Внимание: повторный замер «как есть» отличается от первого (${fps(by.base.ms)} → ${fps(by.base2.ms)} FPS), ноутбук мог нагреться или переключить режим питания. Цифры шагов сравнивай осторожно.`);
-    const helps = rows
-      .filter((r) => !['base', 'base2', 'min', 'norender'].includes(r.id) && r.ms < base * 0.93)
-      .sort((a, b) => a.ms - b.ms)
-      .slice(0, 3);
-    out.push(helps.length ? `Сильнее всего помогает: ${helps.map((r) => `${r.name.toLowerCase()} (${fps(r.ms)} FPS)`).join(', ')}.` : 'По отдельности ни один пункт заметно не помогает.');
-    out.push(`Всё на минимум: ${fps(by.min.ms)} FPS (сейчас ${fps(base)}).`);
+    if (drift > 1.15 || drift < 0.87) out.push(`Внимание: повторный замер «как есть» отличается от первого (${fps(by.base.ms)} → ${fps(by.base2.ms)} FPS): ноутбук мог нагреться или переключить режим питания, сравнивай цифры осторожно.`);
     return out;
   }
   function report(rows, lines) {
@@ -242,7 +252,7 @@ export function createPerf({ renderer, scene, fx, filters, game, world, params }
       `Браузер: ${navigator.userAgent}`,
       `Видеокарта: ${gpuName(gl)}`,
       `Окно: ${innerWidth}×${innerHeight}, devicePixelRatio ${devicePixelRatio}, отрисовка ${db.x}×${db.y}, MSAA ${baseSamples}x, потоков CPU: ${navigator.hardwareConcurrency ?? '?'}`,
-      `GPU-таймер: ${timer ? 'есть' : 'нет (браузер не даёт)'}`,
+      `GPU-таймер: ${timer ? 'есть' : 'нет (браузер не даёт)'} · фильтр «Глаза Олега»: ${filters.current.name}`,
       '',
       ...lines,
       '',
@@ -304,9 +314,7 @@ export function createPerf({ renderer, scene, fx, filters, game, world, params }
     if (!n) v = '';
     else if (s.dt < 18.5) v = 'держит 60 FPS, всё ок';
     else if (s.gpu != null) v = s.gpu > cpu ? 'упор в видеокарту' : 'упор в процессор';
-    else if (s.logic > s.dt * 0.6) v = 'упор в процессор (логика игры)';
-    else if (cpu > s.dt * 0.75) v = 'процессор занят почти весь кадр: упор в процессор или драйвер';
-    else v = `процессор свободен ${Math.round(100 - (cpu / s.dt) * 100)}% кадра: скорее упор в видеокарту`;
+    else v = `скрипты игры заняты ${Math.round((cpu / s.dt) * 100)}% кадра; что тормозит, точнее покажет ?bench`;
     const lines = [
       `FPS ${fps(s.dt)} · кадр ${f1(s.dt)} мс (худшие ${f1(s.worst)})`,
       `процессор: логика ${f1(s.logic)} мс (физика ${f1(s.phys)}, ${Math.round(s.steps)} шаг.) · отрисовка ${f1(s.render)} мс`,
@@ -326,8 +334,9 @@ export function createPerf({ renderer, scene, fx, filters, game, world, params }
     get active() {
       return on || !!bench;
     },
+    // the benchmark or its results card is on screen: game keys stay off
     get benching() {
-      return !!bench;
+      return !!bench || el.classList.contains('card');
     },
     toggle() {
       if (!el.classList.contains('card')) setOn(!on);
