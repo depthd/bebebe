@@ -37,8 +37,10 @@ const SCEN = {
 // robust: random pushes at 0.6 .. 1.8 m/s, 16 each, every 3.5 s on whoever is standing: how often he goes down
 SCEN.dirs = { drunk: 0, steps: [[1], [4, 'pushDirs(0.6)']] };
 SCEN.robust1 = { drunk: 0, steps: [[1], [3.5, 'pushRandom(0.6)'], [3.5, 'pushRandom(0.6)']] };
+// drunk: DRUNK=0.8 (default 0.5) for 30 s, walking back and forth: how often each falls
+SCEN.drunk = { drunk: Number(process.env.DRUNK ?? 0.5), steps: [[6], [8, 'goals(0, -2.2)'], [8, 'goals(0, 2.2)'], [8, 'goals(0, -2.2)']] };
 SCEN.robust = { drunk: Number(process.env.DRUNK ?? 0), steps: [[1], ...[0.6, 1.0, 1.4, 1.8].flatMap((s) => [0, 1, 2, 3].map((k) => [3.5, `pushRandom(${s})`]))] };
-const names = args.length ? args : Object.keys(SCEN).filter((n) => !n.startsWith('robust'));
+const names = args.length ? args : Object.keys(SCEN).filter((n) => !n.startsWith('robust') && n !== 'drunk');
 
 const server = await createServer({ server: { port: 0, host: '127.0.0.1', hmr: false, watch: null }, logLevel: 'error' });
 await server.listen();

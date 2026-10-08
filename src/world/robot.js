@@ -349,7 +349,8 @@ export class Robot {
   control(h) {
     if (!this.active || !this.kin) return;
     const R = TUNE.robot, B = this.bodies, S = this.servos, st = this.stats;
-    const d = clamp(this.drunk, 0, 1);
+    // how drunk his body is: hardly at first, a lot near the end (CONCEPT: up to ~50% he only sways)
+    const d = clamp(this.drunk, 0, 1) ** R.drunkCurve;
     const up = pressing();
     let feetN = 0;
     for (const [i, f] of this.feet.entries()) {
