@@ -9,7 +9,7 @@ Browser 3D game (three.js + Vite, vanilla JS), a birthday gift. FNAF × Who's Yo
 - `npm run plan` regenerates `docs/plan.svg` from the layout data
 - `npm run assets [id...]` rebuilds `src/assets/models/*.glb` from `scripts/assets/assets.json`: downloads each source once into `.cache/`, runs it through headless Blender (`scripts/assets/blender_build.py`: one mesh, triangle budget, textures shrunk, origin at the base or top), and rewrites `src/assets/models/LICENSES.md`. Needs Blender 4.5 on PATH (or `BLENDER=`).
 - Pushes to the default branch build and deploy to GitHub Pages (`.github/workflows/pages.yml`)
-- `npm run robot -- [scenario...] [--video name]` measures the new physical bodies in `lab.html` at a fixed 1/30 s frame (stand, push, walk, turn, zigzag, drunk, robust = fall rate per push strength) and can render videos to `shots/robot/` (needs ffmpeg). `TUNE='{"walkSpeed":0.8}'`, `SEED=`, `CAM=side|close|follow` tweak a run.
+- `npm run robot -- [scenario...] [--video name]` measures the new physical bodies in `lab.html` at a fixed 1/30 s frame (stand, push, walk, turn, zigzag, drunk, robust = fall rate per push strength) and can render videos to `shots/robot/` (needs ffmpeg). `TUNE='{"walkSpeed":0.8}'`, `SEED=`, `CAM=mid|side|close|follow` tweak a run.
 - `npm run shots -- <name> [1,3,...]` saves eye-level screenshots of 14 fixed views (every room, landing, yard, shop) to `shots/<name>/`, plus 2x2 contact sheets. Run it before and after any visual change and compare the sheets; a top-down look does not count as seeing the result.
 
 ## Map of the code
