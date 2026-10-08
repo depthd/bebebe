@@ -7,8 +7,9 @@ Browser 3D game (three.js + Vite, vanilla JS), a birthday gift. FNAF × Who's Yo
 - `npm install`, then `npm run dev` (http://localhost:5173)
 - `npm run build` builds to `dist/`, which works from any subfolder (`base: './'`)
 - `npm run plan` regenerates `docs/plan.svg` from the layout data
+- `npm run assets [id...]` rebuilds `src/assets/models/*.glb` from `scripts/assets/assets.json`: downloads each source once into `.cache/`, runs it through headless Blender (`scripts/assets/blender_build.py`: one mesh, triangle budget, textures shrunk, origin at the base or top), and rewrites `src/assets/models/LICENSES.md`. Needs Blender 4.5 on PATH (or `BLENDER=`).
 - Pushes to the default branch build and deploy to GitHub Pages (`.github/workflows/pages.yml`)
-- `npm run shots -- <name>` saves eye-level screenshots of 14 fixed views (every room, landing, yard, shop) to `shots/<name>/`, plus 2x2 contact sheets. Run it before and after any visual change and compare the sheets; a top-down look does not count as seeing the result.
+- `npm run shots -- <name> [1,3,...]` saves eye-level screenshots of 14 fixed views (every room, landing, yard, shop) to `shots/<name>/`, plus 2x2 contact sheets. Run it before and after any visual change and compare the sheets; a top-down look does not count as seeing the result.
 
 ## Map of the code
 
@@ -36,7 +37,8 @@ Browser 3D game (three.js + Vite, vanilla JS), a birthday gift. FNAF × Who's Yo
 
 - Interactable = any Object3D with `userData.target = { name, info?(), actions() -> [{ key: 'E'|'R'|'T', text, run }] }`.
 - Keys are read via `e.code`, so a Russian keyboard layout works.
-- Textures are canvas-generated and sounds are synthesized. The only real assets are in `src/assets/` (birthday paintings, face photos, skin sheets, voices); they are imported with `?inline`, so the build stays a single page with no extra requests.
+- Textures are canvas-generated and sounds are synthesized. The real assets are in `src/assets/` (birthday paintings, face photos, skin sheets, voices), imported with `?inline`, and 3D models (`src/assets/models/*.glb`), which stay separate files (base64 would bloat them) and are loaded once by `world/models.js` before the world is built; `model(id)` gives a copy.
+- Third-party assets must be CC0 (free for commercial use, no attribution). The asset pipeline only knows CC0-only libraries (Poly Haven, ambientCG, Kenney, Quaternius); don't add a source that has any other licence.
 
 ## Debugging
 

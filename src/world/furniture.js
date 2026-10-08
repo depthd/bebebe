@@ -9,6 +9,7 @@ import pharaohs from '../assets/art/pharaohs.webp?inline';
 
 const ART = { frogs, mushrooms, pharaohs };
 import { boxGeo, mat } from './apartment.js';
+import { model } from './models.js';
 import * as T from './textures.js';
 
 const M = {
@@ -290,17 +291,25 @@ const BUILD = {
   },
 };
 
+// a Soviet five-horn chandelier (Poly Haven, CC0), hung from the ceiling over the party
 function chandelier(group, [x, z]) {
-  const brass = mat('#b8913a', { metalness: 0.8, roughness: 0.3 });
-  const glass = new THREE.MeshStandardMaterial({ color: '#f5efe0', emissive: '#ffd9a0', emissiveIntensity: 0.6, transparent: true, opacity: 0.85 });
-  const add = (geo, m) => group.add(new THREE.Mesh(geo, m));
-  add(new THREE.CylinderGeometry(0.01, 0.01, 0.45).translate(x, H - 0.22, z), brass);
-  add(new THREE.TorusGeometry(0.26, 0.012, 6, 32).rotateX(Math.PI / 2).translate(x, H - 0.48, z), brass);
-  for (let i = 0; i < 5; i++) {
-    const a = (i / 5) * Math.PI * 2, px = x + Math.cos(a) * 0.26, pz = z + Math.sin(a) * 0.26;
-    add(new THREE.CylinderGeometry(0.1, 0.05, 0.12, 12, 1, true).translate(px, H - 0.42, pz), glass);
-    add(new THREE.SphereGeometry(0.035, 10, 8).translate(px, H - 0.45, pz), M.bulb);
-  }
+  const c = model('Chandelier_02');
+  c.scale.setScalar(0.8);
+  c.position.set(x, H, z);
+  // lit from the inside: the fabric shades glow in their own colour (brass, darker, barely), the bulbs shine
+  c.traverse((o) => {
+    for (const m of o.isMesh ? [o.material].flat() : []) {
+      if (m.name.endsWith('_bulb')) {
+        m.emissive.set('#fff2d0');
+        m.emissiveIntensity = 2;
+      } else {
+        m.emissiveMap = m.map;
+        m.emissive.set('#ffd9a0');
+        m.emissiveIntensity = 0.6;
+      }
+    }
+  });
+  group.add(c);
 }
 
 function painting(group, p) {

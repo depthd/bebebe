@@ -18,6 +18,7 @@ import * as audio from './audio.js';
 import { TUNE, BIRTHDAY } from './config.js';
 import { createLightPool } from './world/lightpool.js';
 import { createPerf } from './perf.js';
+import { loadModels } from './world/models.js';
 import { createFilters } from './filters.js';
 
 const params = new URLSearchParams(location.search);
@@ -41,6 +42,7 @@ const doorCam = new THREE.PerspectiveCamera(80, 4 / 3, 0.05, 50);
 doorCam.position.set(...DOORCAM.pos);
 doorCam.lookAt(...DOORCAM.look);
 
+await loadModels(); // the .glb models, before anything that places them
 const apt = buildApartment();
 const furn = buildFurniture();
 scene.add(apt.group, furn.group);

@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview --host",
     "plan": "node scripts/plan.mjs",
-    "shots": "node scripts/shots.mjs"
+    "shots": "node scripts/shots.mjs",
+    "assets": "NODE_USE_ENV_PROXY=1 node scripts/assets/build.mjs"
   },
   "dependencies": {
     "cannon-es": "^0.20.0",

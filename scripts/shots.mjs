@@ -1,4 +1,4 @@
-// Eye-level screenshots of the whole game: `npm run shots -- <name>` (default name "now").
+// Eye-level screenshots of the whole game: `npm run shots -- <name> [view numbers]` (default name "now").
 // Starts the dev server, opens the game in headless Chromium, stands Oleg at fixed points
 // (every room, the landing, the yard, the shop) at eye height, and saves each view plus
 // contact sheets of four (shots/<name>/sheet-N.png). Same points every run, so two runs
@@ -29,6 +29,8 @@ const VIEWS = [
 const W = 1280, H = 720;
 
 const name = process.argv[2] || 'now';
+// optional: only some views, by number (`npm run shots -- after 1,3`)
+const pick = process.argv[3]?.split(',').map(Number);
 const out = `shots/${name}`;
 mkdirSync(out, { recursive: true });
 
@@ -53,6 +55,7 @@ try {
   await page.evaluate(() => { window.__game.update = () => {}; });
   const shots = [];
   for (const [i, [label, from, to, pitch]] of VIEWS.entries()) {
+    if (pick && !pick.includes(i + 1)) continue;
     const [x, z] = planToWorld.pt(...from), [tx, tz] = planToWorld.pt(...to);
     const yaw = Math.atan2(-(tx - x), -(tz - z));
     await page.evaluate(([x, z, yaw, pitch]) => {
@@ -74,7 +77,7 @@ try {
       return `<figure><img src="data:image/png;base64,${b64}"><figcaption>${g.file.replace('.png', '')} · ${g.label}</figcaption></figure>`;
     });
     await sheet.setContent(`<style>body{margin:0;background:#111;display:grid;grid-template-columns:1fr 1fr;gap:4px;font:15px sans-serif;color:#eee}figure{margin:0;position:relative}img{width:100%;display:block}figcaption{position:absolute;left:6px;top:6px;padding:2px 6px;background:rgba(0,0,0,.7);border-radius:4px}</style>${cells.join('')}`);
-    await sheet.screenshot({ path: `${out}/sheet-${s + 1}.png`, fullPage: true });
+    await sheet.screenshot({ path: `${out}/${pick ? 'pick' : 'sheet'}-${s + 1}.png`, fullPage: true }); // a partial run keeps the full sheets
   }
   writeFileSync(`${out}/views.json`, JSON.stringify(VIEWS, null, 1));
   if (errors.length) console.log(`page errors:\n${errors.join('\n')}`);
