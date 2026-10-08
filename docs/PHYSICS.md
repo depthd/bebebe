@@ -16,32 +16,61 @@ not decoration.
 - Furniture colliders were 0.8 m tall (the wardrobe is 2.5 m): heads and shoulders went through. Seat spots
   are inside the furniture, so a guy standing up was created inside the sofa and thrown out at 15 m/s.
 
-## The plan
+## The new bodies (`src/world/robot.js`, `?phys=new`)
 
-The new controller lives behind `?phys=new` until it is better than the old one in every way; the plain
-URL keeps the old physics.
+- 13 boxes: pelvis, torso, head, thighs, shins, **feet on ankles**, upper and lower arms.
+- Every joint is a **servo**: a rate motor that turns the joint towards its target as fast as `speed`
+  allows, up to a torque limit (his strength). Solved by the physics solver itself, so stiff joints don't
+  explode the way the old hand-made spring torques did.
+- **Nothing pulls or lifts him.** Every controller push is between two of his own parts; the floor under his
+  feet is what holds him up and moves him. Feet carry 100% of the weight standing.
+- **Standing**: the hips keep the pelvis level, the knees hold the height, and the ankles roll the body over
+  the feet. Gravity is compensated, and an ankle never pushes harder than its foot can before rocking onto its
+  heel, toe or edge (the toe gives more room than the heel).
+- **Stepping**: when the capture point (where his falling body would stop if a foot were put there) leaves
+  the feet, a foot goes to where that point will be when it lands. The loaded foot can't lift, so the other
+  one goes, crossing over if it has to (that's a stumble). **Walking is the same on purpose**, the foot
+  landing a bit short of the capture point so the body rolls on. A sharp turn is walked as an arc.
+- **Drunk**: weaker and slower joints, late steps (he reacts to where his body was), sloppy foot placement,
+  a sense of up that wanders off (he leans, then has to catch it).
+- **Falling** is real (the torso past ~57°); on the floor the joints go slack. **Getting up** is played from
+  the pose he lies in (face down: push up, kneel, a foot forward, up; face up: sit up, tuck, squat, up); the
+  first try may sag back down. No lift, no snap.
+- One helping hand, documented as such: `TUNE.robot.assist`, a capped torque (80 N·m) that stands the upper
+  body up, only while his feet press on the floor, fading when drunk. It holds no weight and can't save a guy
+  whose feet aren't under him.
 
-1. **The body is the truth.** No teleports: the logical position follows the pelvis. Full-height furniture
-   colliders. Seats are reached from an approach point in front of them; sitting down and standing up
-   blend over half a second instead of jumping.
-2. **Legs carry the weight.** No external lift, pull or upright torque. Feet are separate bodies on ankles.
-   Joint motors sized for the load. Everything the controller does is an action/reaction pair between body
-   parts, so the only thing that holds him up or moves him is the floor under his feet.
-3. **Stepping.** Foot placement from the capture point (where he has to step to stop): standing, a shove
-   makes him step; walking is falling forward and catching it. Drunk = late, sloppy steps and a wandering
-   sense of up, so stumbles and falls come by themselves.
-4. **Getting up** is a struggle animation from the pose he lies in (the first try may fail), never a lift.
-5. **Gameplay hooks**: shoving, guys bumping into each other, the lab page (`lab.html`, also `?lab`) to tune
-   the feel with sliders.
+In the game (`friends.js`), the body is the truth: the logical position follows the pelvis, the path only
+tells the body where to walk (`steer`); a body that gets stuck tries the next path point and finally counts as
+arrived. Seats and beds are reached at a free `approach` point next to them, and sitting down / standing up
+slides the figure over half a second (`startBlend`). Furniture colliders are as tall as the furniture is
+drawn (both physics modes).
 
-Every step: before/after numbers from the measuring harness (teleports, penetration, falls, feet load,
-physics ms) and a video.
+Tuning: `lab.html` (also `?lab`): the four guys on an empty floor, sliders over `TUNE.robot`, shoves, click to
+walk, Oleg on WASD. Measuring: `npm run robot` (see CLAUDE.md).
 
-## Status
+## Status (night of 8–9 Oct)
 
-- [ ] lab page + harness
-- [ ] controller: standing on own legs
-- [ ] controller: stepping and walking
-- [ ] falls and getting up
-- [ ] game integration behind `?phys=new`
-- [ ] measurements, videos, report
+Lab numbers (fixed 1/30 s frames, like a weak laptop):
+
+| | result |
+|---|---|
+| standing still | 0 falls, 0 steps, feet carry 100% |
+| walking straight 6 s | 0 falls (4 guys) |
+| walking round 90° corners | 0–1 falls per 4 guys × 12 s |
+| shoved 0.6 m/s, random direction | about half catch it with stumbling steps |
+| shoved 1.4–1.8 m/s | down almost always |
+| turning on the spot | the turn works, then he tends to drift backwards and fall |
+
+In the game with `?phys=new`: no teleports (none exist any more), nobody inside the furniture, real falls
+and get-ups. **But sober guys still fall about 4 times a minute each while moving around the flat**, mostly on
+direction changes and when bumping into each other or Oleg. That is why it stays behind the flag.
+
+Cost: physics 2.1 ms per frame vs 1.6 ms for the old ragdolls (headless, 4 guys, 30 fps).
+
+## Next
+
+- Backward and turning recovery (the weakest part): steps backwards rarely catch the fall.
+- Fewer falls when sober, then tune drunk to fall often again (the gameplay point).
+- Guys steering around each other (they walk into each other now).
+- Then: gameplay hooks (Oleg catching, pushing a guy into another), and switching the default.

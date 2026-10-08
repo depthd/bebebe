@@ -348,7 +348,9 @@ export function buildFurniture() {
     BUILD[item.id]?.(f);
     group.add(g);
     items[item.id] = { ...item, group: g };
-    if (!item.onTop) colliders.push({ x0: item.x0 + 0.05, x1: item.x1 - 0.05, z0: item.z0 + 0.05, z1: item.z1 - 0.05 });
+    // as tall as it's drawn (for the physical bodies: a head doesn't go through the top of the wardrobe)
+    const h = Math.min(2.6, Math.max(0.3, new THREE.Box3().setFromObject(g).max.y));
+    if (!item.onTop) colliders.push({ x0: item.x0 + 0.05, x1: item.x1 - 0.05, z0: item.z0 + 0.05, z1: item.z1 - 0.05, h, id: item.id });
   }
   for (const p of PAINTINGS) painting(group, p);
   const living = ROOMS.find((r) => r.chandelier);

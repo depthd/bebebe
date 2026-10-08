@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { TUNE } from '../config.js';
 import { TOY_SPOTS, VISITOR_SPOT, CAT_SPOTS, SPOTS, roomAt } from '../world/layout.js';
 import { makePerson, makePuddle, makeToy, makeBottle, makePlate, makeBrokenMark, makeBucket } from '../world/figures.js';
-import { Friend, Cat, clamp, rand } from './friends.js';
+import { Friend, Cat, clamp, rand, makeBody } from './friends.js';
 import { particles } from '../world/particles.js';
 import { Interactions } from './interact.js';
 import { Cooking } from './cooking.js';
@@ -12,7 +12,7 @@ import { PartyEvents } from './events.js';
 import { PC } from './pc.js';
 import { Living } from './living.js';
 import { Shop } from './shop.js';
-import { step as physicsStep, moveOleg, updateDoors, Ragdoll } from '../world/ragdoll.js';
+import { step as physicsStep, moveOleg, updateDoors } from '../world/ragdoll.js';
 
 export const ITEMS = {
   beer: { name: 'Пиво', icon: '🍺' },
@@ -212,8 +212,7 @@ export class Game {
     } else this.sfx.pat();
   }
 
-  bodyBlocked(x, z) {
-    const r = 0.16;
+  bodyBlocked(x, z, r = 0.16) {
     for (const c of [...this.apt.colliders, ...this.furn.colliders]) {
       if (c.enabled === false) continue;
       if (c.seg) {
@@ -408,7 +407,8 @@ export class Game {
       this.dynamic.add(nf.root);
       f.figure = nf;
       f.rag?.disable();
-      f.rag = new Ragdoll(nf.rig);
+      f.rag = makeBody(nf.rig);
+      f.hookBody();
     }
   }
 
@@ -1244,7 +1244,11 @@ export class Game {
     this.lastOleg = [ox, oz];
     updateDoors();
     physicsStep(dt, (h) => {
-      for (const f of this.friends) if (f.rag?.active) f.rag.control(f.pos, f.drunk / 100, f.mode === 'walk', h);
+      for (const f of this.friends) {
+        if (!f.rag?.active) continue;
+        if (f.rag.isRobot) f.rag.control(h); // walks to its own goal (friends.js steers it)
+        else f.rag.control(f.pos, f.drunk / 100, f.mode === 'walk', h);
+      }
     });
     for (const f of this.friends) {
       f.physicsTick(dt);

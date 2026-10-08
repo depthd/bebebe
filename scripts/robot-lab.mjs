@@ -25,6 +25,8 @@ const SCEN = {
   shove: { drunk: 0, steps: [[3], ...[0, 2, 4, 6].map((k) => [5, `pushAll(${(k * Math.PI) / 4}, 3.2)`])] },
   walk: { drunk: 0, steps: [[2], [8, 'goals(0, -2.2)'], [8, 'goals(0, 2.2)']] },
   turn: { drunk: 0, steps: [[2], [4, 'yaws(Math.PI/2)'], [4, 'yaws(Math.PI)']] },
+  // like a path through the flat: short legs with turns between them
+  zigzag: { drunk: 0, steps: [[0.5], [2.5, 'goalsRel(0.8, 1.2)'], [2.5, 'goalsRel(0, 2.4)'], [2.5, 'goalsRel(-0.8, 1.2)'], [2.5, 'goalsRel(0, 0)'], [2.5, 'goalsRel(1.2, -0.5)'], [3, 'goalsRel(0, 0)']] },
   corner: { drunk: 0, steps: [[0.5], [3.5, 'goals(0, 2.5)'], [4, 'goalsRel(2.5, 2.5)'], [4, 'goalsRel(2.5, 0)']] },
   walk1: { drunk: 0, steps: [[0.5], [6, 'goals(0, 4)']] },
   turn1: { drunk: 0, steps: [[0.5], [2.5, 'yaws(Math.PI/2)']] },
@@ -59,7 +61,7 @@ try {
       };
     }, seed);
     if (process.env.TUNE) await page.addInitScript((t) => (window.TUNEX = JSON.parse(t)), process.env.TUNE);
-    await page.goto(`${url}lab.html?manual&capture${process.env.CAM ? '&cam=' + process.env.CAM : ''}${process.env.DBG ? '&dbg' : ''}${process.env.STEPS ? '&steps=' + process.env.STEPS + '&hz=' + (process.env.HZ ?? 180) : ''}`, { waitUntil: 'load', timeout: 120000 });
+    await page.goto(`${url}lab.html?manual&capture${process.env.CAM ? '&cam=' + process.env.CAM : ''}${process.env.DBG ? '&dbg' : ''}${process.env.FI ? '&fi=' + process.env.FI : ''}${process.env.STEPS ? '&steps=' + process.env.STEPS + '&hz=' + (process.env.HZ ?? 180) : ''}`, { waitUntil: 'load', timeout: 120000 });
     await page.waitForFunction(() => window.__lab, null, { timeout: 120000 });
     await page.evaluate((d) => {
       const L = window.__lab;
@@ -84,6 +86,7 @@ try {
       const cam = new URLSearchParams(location.search).get('cam');
       if (cam === 'follow') {
         L.follow = true;
+        L.followI = Number(new URLSearchParams(location.search).get('fi') ?? 0);
       } else if (cam === 'close') {
         L.camera.position.set(-2.2, 1.5, 2.2);
         L.controls.target.set(-3.3, 0.7, 0);
@@ -119,7 +122,7 @@ try {
           }
           if (!video) return null;
           if (L.follow) {
-            const c = L.guys[0].rb.c;
+            const c = L.guys[L.followI ?? 0].rb.c;
             L.camera.position.set(c.x - 2.6, 1.6, c.z + 0.6);
             L.controls.target.set(c.x, 0.7, c.z);
           }

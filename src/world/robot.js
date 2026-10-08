@@ -191,8 +191,11 @@ export class Robot {
       s.tmax = tmax;
       this.servos[name] = s;
     }
+    this.isRobot = true;
     this.active = false;
     this.state = 'up'; // up | down | getup
+    this.stun = 0; // s of weak legs after a hard knock
+    this.lastPush = null; // what knocked him (the game's 'shove', 'bump', 'slip'...)
     this.kin = null;
     // set by the owner every frame
     this.goal = null; // [x, z] to walk to, null = stand
@@ -356,8 +359,9 @@ export class Robot {
     if (this.state === 'up' && (tilt > R.fallAt || this.c.y < 0.45)) this.fall();
     if (this.state !== 'up') return this.limp(h);
 
-    // strength: drunk joints are weaker and slower
-    const str = R.strength * (1 - R.weak * d) * (this.boost ?? 1);
+    // strength: drunk joints are weaker and slower; knocked hard, the legs give for a moment
+    this.stun = Math.max(0, this.stun - h);
+    const str = R.strength * (1 - R.weak * d) * (this.boost ?? 1) * (this.stun > 0 ? 0.35 : 1);
     const k = R.speed * (1 - 0.35 * d);
     // what his head thinks the body is doing: drunk, it lags behind
     const lag = R.late * d;
@@ -369,8 +373,17 @@ export class Robot {
     if (this.goal) {
       va.set(this.goal[0] - this.c.x, 0, this.goal[1] - this.c.z);
       const dist = va.length();
-      if (dist > 0.12) va.multiplyScalar(Math.min((this.speed ?? R.walkSpeed) * (1 - 0.3 * d), 0.4 + dist * 1.6) / dist);
-      else va.set(0, 0, 0);
+      // a sharp turn: slow down; one sharper than ~50°: walk round it in an arc (spinning on the spot is
+      // where a robot falls over its own feet)
+      const yn = this.yawNow ?? 0;
+      let face = Math.atan2(va.x, va.z) - yn;
+      face = Math.atan2(Math.sin(face), Math.cos(face));
+      const sp = Math.min((this.speed ?? R.walkSpeed) * (1 - 0.3 * d), 0.4 + dist * 1.6);
+      if (dist <= 0.12) va.set(0, 0, 0);
+      else if (Math.abs(face) > 0.9) {
+        const a = yn + Math.sign(face) * 0.9;
+        va.set(Math.sin(a), 0, Math.cos(a)).multiplyScalar(Math.min(sp, 0.45));
+      } else va.multiplyScalar((sp * Math.max(0.4, Math.cos(face))) / dist);
     }
     this.vd.lerp(va, Math.min(1, h * 2.5));
     const moving = this.vd.lengthSq() > 0.04;

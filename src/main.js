@@ -54,7 +54,7 @@ apt.ceiling.add(outside.ceiling);
 const player = new Player(camera, [...apt.colliders, ...furn.colliders, ...outside.colliders]);
 player.floorAt = outside.heightAt;
 ragdoll.addStatics(apt.colliders, 2.6); // walls for the ragdolls
-ragdoll.addStatics(furn.colliders, 0.8); // furniture (they bump into it, fall over it)
+ragdoll.addStatics(furn.colliders, 0.8); // furniture, each as tall as it's drawn (they bump into it, fall over it)
 scene.add(camera); // the first-person hands hang off the camera
 const hands = createViewmodel(camera);
 let mirror = null; // created at boot, once the head style is known
@@ -95,6 +95,7 @@ const lightPool = createLightPool(scene, 6, (p) => { const r = p.y > -0.3 && roo
 window.__renderer = renderer; window.__scene = scene;
 window.__tune = TUNE; // balance numbers, live
 window.__ragdoll = ragdoll; // physics debugging
+window.__TUNE = TUNE; // tuning from the console / scripts
 if (params.get('physics') === 'off') game.noPhysics = true; // debug: the old kinematic bodies
 
 const orbit = new OrbitControls(orbitCam, canvas);

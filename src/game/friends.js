@@ -3,8 +3,14 @@ import { TUNE } from '../config.js';
 import { SPOTS, CAT_SPOTS, roomAt } from '../world/layout.js';
 import { makePerson, makeCat } from '../world/figures.js';
 import { Ragdoll } from '../world/ragdoll.js';
+import { Robot } from '../world/robot.js';
 import { route } from './nav.js';
 import { NAV } from '../world/layout.js';
+
+// `?phys=new`: the guys are robots on their own legs (world/robot.js): the body is the truth, the game
+// follows it. Otherwise the old ragdolls, pulled along to where the game says they are
+export const ROBOTS = typeof location !== 'undefined' && new URLSearchParams(location.search).get('phys') === 'new';
+export const makeBody = (rig) => (ROBOTS ? new Robot(rig) : new Ragdoll(rig));
 
 export const nearestNode = (x, z) => Object.entries(NAV).reduce((b, [k, [nx, nz]]) => (Math.hypot(nx - x, nz - z) < b.d ? { k, d: Math.hypot(nx - x, nz - z) } : b), { k: 'living', d: 1e9 }).k;
 
@@ -59,17 +65,49 @@ class Walker {
     const root = this.figure.root;
     root.position.set(this.pos[0] + ox, this.spot?.pose || this.mode === 'walk' ? 0 : this.y, this.pos[1] + oz);
     root.rotation.y = this.heading + yaw;
+    // sitting down / getting up: slide from where the body was instead of jumping there
+    const b = this.blend;
+    if (b) {
+      const k = Math.min(1, b.t / b.dur), e = k * k * (3 - 2 * k);
+      root.position.set(b.x + (root.position.x - b.x) * e, b.y + (root.position.y - b.y) * e, b.z + (root.position.z - b.z) * e);
+      root.rotation.y = b.yaw + Math.atan2(Math.sin(root.rotation.y - b.yaw), Math.cos(root.rotation.y - b.yaw)) * e;
+    }
+  }
+  startBlend(dur = 0.55) {
+    const r = this.figure.root.position;
+    this.blend = { x: r.x, y: r.y, z: r.z, yaw: this.figure.root.rotation.y, t: 0, dur };
+  }
+  // where a body can stand to use this spot: the spot itself, or (a seat, a bed, a spot inside furniture)
+  // the first free point from it towards its nav node
+  approach(spot) {
+    const g = this.game, [px, pz] = spot.p;
+    if (!spot.pose && !g.bodyBlocked(px, pz, 0.24)) return spot.p;
+    const [nx, nz] = NAV[spot.node] ?? spot.p;
+    for (let k = 1; k <= 24; k++) {
+      const t = k / 24, x = px + (nx - px) * t, z = pz + (nz - pz) * t;
+      if (!g.bodyBlocked(x, z, 0.24)) return [x, z];
+    }
+    return [nx, nz];
+  }
+  // a physical body leaving a seat: it stands up next to it, the figure slides there
+  leaveSeat() {
+    if (!this.rag?.isRobot || this.figure.pose === 'stand' || !this.spot) return;
+    this.startBlend(0.45);
+    this.pos = [...this.approach(this.spot)];
   }
   // off the sofa / chair: standing on his feet where he is
   standUp() {
+    this.leaveSeat();
     this.spot = null;
     this.y = 0;
     this.figure.setPose?.('stand');
     this.applyTransform();
   }
   walkTo(spot, onArrive, blocked) {
+    this.leaveSeat();
     const r = route(this.node, this.pos, spot.node, spot.p, blocked);
     if (!r) return false;
+    if (this.rag?.isRobot) r.points[r.points.length - 1] = this.approach(spot); // a body can't walk into the sofa
     if (this.canOpenDoors) {
       if (r.nodes.includes('balconyDoor')) this.game.doors.balcony.setOpen(true);
       if (r.nodes.includes('bathDoor')) this.game.doors.bath.setOpen(true);
@@ -84,6 +122,10 @@ class Walker {
     return true;
   }
   stepWalk(dt) {
+    if (this.rag?.isRobot) {
+      if (this.rag.active) return this.steer(dt);
+      if (this.blend || this.rag.state === 'getup') return; // standing up first
+    }
     let step = this.speed * dt;
     while (this.path.length && step > 0) {
       const [tx, tz] = this.path[0];
@@ -100,15 +142,46 @@ class Walker {
         step = 0;
       }
     }
-    if (!this.path.length) {
-      this.mode = 'idle';
-      this.node = this.target.node;
-      this.spot = this.target;
-      this.arrive(this.target);
-      const cb = this.onArrive;
-      this.onArrive = null;
-      cb?.();
+    if (!this.path.length) this.finishWalk();
+  }
+  finishWalk() {
+    this.mode = 'idle';
+    this.node = this.target.node;
+    this.spot = this.target;
+    // a body sits down on the seat from where it stands
+    if (this.rag?.isRobot && this.target.pose) {
+      this.startBlend();
+      this.pos = [...this.target.p];
     }
+    this.arrive(this.target);
+    const cb = this.onArrive;
+    this.onArrive = null;
+    cb?.();
+  }
+  // a physical body walks itself: aim it at the next point of the path, notice when it got there
+  // (or got stuck on something: then the next point, and in the end it's there enough)
+  steer(dt) {
+    const rb = this.rag, [x, z] = this.pos;
+    if (rb.state !== 'up') return; // on the floor or getting up: the path waits
+    while (this.path.length > 1 && Math.hypot(this.path[0][0] - x, this.path[0][1] - z) < 0.5) this.path.shift();
+    const [tx, tz] = this.path[0], d = Math.hypot(tx - x, tz - z), last = this.path.length === 1;
+    const p = (this.prog ??= { t: 0, x, z, stuck: 0 });
+    p.t += dt;
+    if (p.t > 1.5) {
+      p.stuck = Math.hypot(x - p.x, z - p.z) < 0.25 ? p.stuck + p.t : 0;
+      Object.assign(p, { t: 0, x, z });
+    }
+    if ((last && d < 0.35) || p.stuck > 9 || (last && p.stuck > 3 && d < 1.5)) {
+      this.prog = null;
+      rb.goal = null;
+      return this.finishWalk();
+    }
+    if (!last && p.stuck > 3) {
+      this.path.shift();
+      p.stuck = 0;
+    }
+    rb.goal = [tx, tz];
+    this.heading = Math.atan2(tx - x, tz - z);
   }
 }
 
@@ -361,7 +434,8 @@ export class Friend extends Walker {
   constructor(game, id) {
     const def = CHARS[id];
     super(game, makePerson({ ...def, style: game.style, faceId: id }), 1.8, true);
-    this.rag = new Ragdoll(this.figure.rig); // the physical body (world/ragdoll.js)
+    this.rag = makeBody(this.figure.rig); // the physical body (world/robot.js or world/ragdoll.js)
+    this.hookBody();
     this.id = id;
     this.def = def;
     this.name = def.name;
@@ -380,6 +454,22 @@ export class Friend extends Walker {
     this.place(spot);
     const act = Object.entries(ACTIVITIES).find(([, a]) => a.spots.includes(def.start))?.[0];
     this.activity = { id: act, spot, left: rand(...ACTIVITIES[act].dur), t: 0, plateT: 0 };
+  }
+
+  // a robot body tells the game when it hits the floor and when it's up again
+  hookBody() {
+    const rb = this.rag;
+    if (!rb?.isRobot) return;
+    rb.onFall = () => {
+      this.fallen = { phys: true, robot: true, t: 0, why: rb.lastPush ?? 'drunk' };
+      this.figure.play('flail');
+      this.fun = clamp(this.fun - 3);
+      this.game.someoneFell(this, this.fallen.why);
+    };
+    rb.onGetup = () => {
+      this.fallen = null;
+      rb.lastPush = null;
+    };
   }
 
   // play one of his recorded clips (src/assets/voice/<id>_<kind>_N.mp3); the sound follows him
@@ -522,8 +612,14 @@ export class Friend extends Walker {
     const talking = this.game.talk?.friend === this; // stands still while telling his story
     // on his feet he's a physical ragdoll; sitting / lying / carried the animation drives him alone
     const rag = this.rag;
-    const phys = rag && !this.game.noPhysics && this.figure.pose === 'stand' && this.figure.root.visible && !(this.fallen && !this.fallen.phys);
-    if (phys && !rag.active) rag.enable(this.pos[0], this.pos[1], this.heading);
+    if (this.blend && (this.blend.t += dt) >= this.blend.dur) this.blend = null;
+    if (rag?.isRobot) {
+      rag.drunk = d;
+      rag.yawWant = this.heading;
+      if (rag.state === 'getup') this.blend = null;
+    }
+    const phys = rag && !this.game.noPhysics && this.figure.pose === 'stand' && this.figure.root.visible && !(this.fallen && !this.fallen.phys) && !this.blend;
+    if (phys && !rag.active && rag.state !== 'getup') rag.enable(this.pos[0], this.pos[1], this.heading);
     else if (!phys && rag?.active) rag.disable();
     if (rag?.active) rag.restore();
     else this.balanceTick(dt);
@@ -535,6 +631,13 @@ export class Friend extends Walker {
   // after the physics step: the body on the floor? he fell. Lying long enough: he struggles back up
   physicsTick(dt) {
     const rag = this.rag;
+    if (rag?.isRobot) {
+      // the body is where he is
+      rag.tick(dt);
+      if (rag.state === 'getup') this.pos = [rag.gu.x, rag.gu.z];
+      else if (rag.active) this.pos = [rag.pelvis.x, rag.pelvis.z];
+      return;
+    }
     if (!rag?.active) return;
     const F = this.fallen;
     if (!F && rag.upright < 0.45) {
@@ -675,6 +778,16 @@ export class Friend extends Walker {
     }
     this.walkingNow = false;
     if (dOleg < 1.0) return; // close enough, wait
+    if (this.rag?.isRobot && this.rag.active) {
+      // his body walks the trail: aim at the next point of it
+      const [x, z] = this.pos;
+      while (fo.idx < fo.trail.length - 1 && Math.hypot(fo.trail[fo.idx][0] - x, fo.trail[fo.idx][1] - z) < 0.5) fo.idx++;
+      const [tx, tz] = fo.trail[fo.idx];
+      this.rag.goal = [tx, tz];
+      this.heading = Math.atan2(tx - x, tz - z);
+      this.walkingNow = true;
+      return;
+    }
     let step = this.speed * 1.1 * dt;
     while (step > 0 && fo.idx < fo.trail.length) {
       const [tx, tz] = fo.trail[fo.idx];
@@ -757,6 +870,13 @@ export class Friend extends Walker {
   fall(dir = this.heading, why = 'drunk') {
     if (this.fallen || this.figure.pose !== 'stand' || this.follow) return false;
     const g = this.game;
+    if (this.rag?.isRobot && this.rag.active) {
+      // knocked off his feet: a hard shove and the legs give for a moment; the physics does the rest
+      this.rag.push(dir, 3);
+      this.rag.stun = 1.2;
+      this.rag.lastPush = why;
+      return true;
+    }
     if (this.rag?.active) {
       // a real fall: knock the body over and go limp; physicsTick sees him on the floor
       this.rag.push(dir, 3.5);
@@ -774,6 +894,7 @@ export class Friend extends Walker {
   fallTick(dt) {
     const F = this.fallen;
     F.t += dt;
+    if (F.robot) return; // the body gets itself up (world/robot.js); onGetup clears this
     if (F.phys) {
       // the ragdoll lies there, then gets up like a robot learning to stand
       const rag = this.rag;
@@ -865,6 +986,7 @@ export class Friend extends Walker {
     }
 
     const talking = g.talk?.friend === this;
+    if (this.rag?.isRobot) this.rag.goal = null;
     if (this.fallen) this.fallTick(dt);
     else if (this.follow) this.stepFollow(dt);
     else if (talking) {

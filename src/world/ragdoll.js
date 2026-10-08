@@ -18,22 +18,24 @@ const ground = new CANNON.Body({ mass: 0, shape: new CANNON.Plane(), collisionFi
 ground.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
 world.addBody(ground);
 
-// walls and furniture as static boxes (doors switch on and off with their colliders)
+// walls and furniture as static boxes (doors switch on and off with their colliders); `height` unless the
+// collider has its own `h`
 const doorBodies = [];
 export function addStatics(colliders, height) {
   for (const c of colliders) {
+    const hgt = c.h ?? height;
     let body;
     if (c.seg) {
       const [ax, az, bx, bz] = c.seg;
       const len = Math.hypot(bx - ax, bz - az);
-      body = new CANNON.Body({ mass: 0, shape: new CANNON.Box(new CANNON.Vec3(len / 2, height / 2, c.r)) });
-      body.position.set((ax + bx) / 2, height / 2, (az + bz) / 2);
+      body = new CANNON.Body({ mass: 0, shape: new CANNON.Box(new CANNON.Vec3(len / 2, hgt / 2, c.r)) });
+      body.position.set((ax + bx) / 2, hgt / 2, (az + bz) / 2);
       body.quaternion.setFromEuler(0, -Math.atan2(bz - az, bx - ax), 0);
     } else {
       const hx = (c.x1 - c.x0) / 2, hz = (c.z1 - c.z0) / 2;
       if (hx <= 0 || hz <= 0) continue;
-      body = new CANNON.Body({ mass: 0, shape: new CANNON.Box(new CANNON.Vec3(hx, height / 2, hz)) });
-      body.position.set((c.x0 + c.x1) / 2, height / 2, (c.z0 + c.z1) / 2);
+      body = new CANNON.Body({ mass: 0, shape: new CANNON.Box(new CANNON.Vec3(hx, hgt / 2, hz)) });
+      body.position.set((c.x0 + c.x1) / 2, hgt / 2, (c.z0 + c.z1) / 2);
     }
     body.collisionFilterGroup = G_STATIC;
     body.collisionFilterMask = -1;
