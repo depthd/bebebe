@@ -659,7 +659,16 @@ export class Robot {
     // out to his side: walking always (a gait needs its width); catching a fall only towards the fall
     // (a foot put on the wrong side of it can't stop anything)
     const side = (xi.x - px) * left.x + (xi.z - pz) * left.z;
-    const wide = walking || side * s > 0 ? R.stepWidth : 0;
+    let wide = walking || side * s > 0 ? R.stepWidth : 0;
+    // standing on both feet the falling point is between them anyway: sideways only how far it is off the
+    // middle of a natural stance gets the lead (leading all of it put the foot wider every step, until he
+    // stood astride a metre)
+    if (!walking && R.natural) {
+      const mid = (s * R.natural) / 2, want = 2 * mid + (side - mid) * e * over;
+      tx += left.x * (want - side * e * over);
+      tz += left.z * (want - side * e * over);
+      wide = 0;
+    }
     tx += -this.vd.x * b * R.stride + left.x * s * wide + g.miss.x;
     tz += -this.vd.z * b * R.stride + left.z * s * wide + g.miss.z;
     // caught falling backwards he has only his heels to stand on: the foot goes past where he'd stop, so his
