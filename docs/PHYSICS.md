@@ -83,6 +83,8 @@ What made the difference, in order:
    holds that by itself, and fighting it rolled him off a good stance after every step back. Together, 2–4
    ended the endless backward shuffle that was most of the "falls out of nowhere".
 5. Standing spots next to furniture keep 0.5 m clear, so a step forward doesn't put a knee into the table.
+6. A guy standing about walks back to where he stopped once he's staggered half a metre off. Every catch is a
+   step somewhere: in a 7-minute run a guy "at the table" had ended up in the hall.
 
 Cost: physics 1.8–2.5 ms per frame vs 1.6 ms for the old ragdolls (headless, 4 guys, 30 fps). 8 or 10 solver
 iterations instead of 12 save up to 20% but more guys go down from shoves (12 and 10 of 58 vs 8), and the
