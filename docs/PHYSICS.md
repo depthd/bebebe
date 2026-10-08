@@ -51,26 +51,41 @@ walk, Oleg on WASD. Measuring: `npm run robot` (see CLAUDE.md).
 
 ## Status (night of 8–9 Oct)
 
-Lab numbers (fixed 1/30 s frames, like a weak laptop):
+Lab numbers (fixed 1/30 s frames, like a weak laptop; `npm run robot`):
 
 | | result |
 |---|---|
 | standing still | 0 falls, 0 steps, feet carry 100% |
-| walking straight 6 s | 0 falls (4 guys) |
-| walking round 90° corners | 0–1 falls per 4 guys × 12 s |
-| shoved 0.6 m/s, random direction | about half catch it with stumbling steps |
-| shoved 1.4–1.8 m/s | down almost always |
-| turning on the spot | the turn works, then he tends to drift backwards and fall |
+| walking straight, zigzag, round 90° corners | 0 falls (4 guys each) |
+| shoved 0.6 m/s in each of 4 directions | 0 falls, 2–4 stumbling steps |
+| shoved backwards 0.6–1.8 m/s (one guy each) | 1 of 4 goes down (was 4 of 4) |
+| random shoves 0.6–1.8 m/s, 16 per guy | 8 of 58 go down (was 18 of 43) |
+| walking speed | about 0.4 m/s asked 1.0: a shuffle |
 
-In the game with `?phys=new`: no teleports (none exist any more), nobody inside the furniture, real falls
-and get-ups. **But sober guys still fall about 4 times a minute each while moving around the flat**, mostly on
-direction changes and when bumping into each other or Oleg. That is why it stays behind the flag.
+In the game with `?phys=new` (start of night 1, sober, 3 seeded runs × 90 s, 4 guys): **5 falls**, down from 39
+at the start of the night and 13 before the last fix. No teleports (none exist any more), nobody inside the
+furniture, real falls and get-ups. What's left: bumping into a wall or each other while turning, and a guy
+who is already a bit drunk.
 
-Cost: physics 2.1 ms per frame vs 1.6 ms for the old ragdolls (headless, 4 guys, 30 fps).
+What made the difference, in order:
+
+1. Quicker steps (0.26 s) and arms that pass through furniture (a gesture over the table no longer shoves
+   him off his feet).
+2. A catching foot gets over its spot first and then comes down; it used to land 0.1 m short of where it
+   was going, every time.
+3. A step back goes 6 cm further (he stands on the middle of the foot, not on the heel he can't push with).
+4. In double support the ankles no longer fight gravity along the line between the feet: a staggered stance
+   holds that by itself, and fighting it rolled him off a good stance after every step back. Together, 2–4
+   ended the endless backward shuffle that was most of the "falls out of nowhere".
+5. Standing spots next to furniture keep 0.5 m clear, so a step forward doesn't put a knee into the table.
+
+Cost: physics 1.8–2.5 ms per frame vs 1.6 ms for the old ragdolls (headless, 4 guys, 30 fps).
 
 ## Next
 
-- Backward and turning recovery (the weakest part): steps backwards rarely catch the fall.
-- Fewer falls when sober, then tune drunk to fall often again (the gameplay point).
-- Guys steering around each other (they walk into each other now).
+- Walking is slow (a robot shuffle). `stride` > 1 lands walking steps further back and speeds him up: 1.5 is
+  about +25% in the lab, but in the game it doubles the falls (10 vs 5), and 2.2 overshoots its goal. Kept at 1.
+- Drunk still falls often, as it should: half drunk, each guy goes down twice in 26 s of walking about; fully
+  drunk, twice in 18 s.
+- Guys turning next to walls and each other.
 - Then: gameplay hooks (Oleg catching, pushing a guy into another), and switching the default.
