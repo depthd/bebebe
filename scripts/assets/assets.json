@@ -1,3 +1,74 @@
 [
-  { "id": "Chandelier_02", "source": "polyhaven", "tris": 6000, "tex": 512, "anchor": "top", "for": "люстра в зале" }
+  {
+    "id": "Chandelier_02",
+    "source": "polyhaven",
+    "tris": 6000,
+    "tex": 512,
+    "anchor": "top",
+    "for": "люстра в зале"
+  },
+  {
+    "id": "vintage_electric_kettle",
+    "source": "polyhaven",
+    "tris": 3000,
+    "tex": 512,
+    "anchor": "bottom",
+    "for": "чайник на плите"
+  },
+  {
+    "id": "pot_enamel_01",
+    "source": "polyhaven",
+    "tris": 2500,
+    "tex": 512,
+    "anchor": "bottom",
+    "for": "эмалированная кастрюля на кухне"
+  },
+  {
+    "id": "jug_01",
+    "source": "polyhaven",
+    "tris": 2000,
+    "tex": 256,
+    "anchor": "bottom",
+    "for": "кувшин на кухне"
+  },
+  {
+    "id": "russian_food_cans_01",
+    "source": "polyhaven",
+    "tris": 1400,
+    "tex": 256,
+    "anchor": "bottom",
+    "for": "шпроты, сгущёнка, соль"
+  },
+  {
+    "id": "alarm_clock_01",
+    "source": "polyhaven",
+    "tris": 2500,
+    "tex": 256,
+    "anchor": "bottom",
+    "for": "будильник у сестры на столе"
+  },
+  {
+    "id": "desk_lamp_arm_01",
+    "source": "polyhaven",
+    "tris": 4000,
+    "tex": 512,
+    "anchor": "bottom",
+    "for": "настольная лампа сестры"
+  },
+  {
+    "id": "potted_plant_01",
+    "source": "polyhaven",
+    "tris": 24000,
+    "tex": 512,
+    "anchor": "bottom",
+    "for": "фикус в зале"
+  },
+  {
+    "id": "cardboard_box_01",
+    "source": "polyhaven",
+    "tris": 1500,
+    "tex": 512,
+    "anchor": "bottom",
+    "for": "коробки на шкафу в прихожей"
+  }
 ]

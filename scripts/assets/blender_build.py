@@ -46,11 +46,50 @@ hi = Vector((max(v.x for v in vs), max(v.y for v in vs), max(v.z for v in vs)))
 pivot = Vector(((lo.x + hi.x) / 2, (lo.y + hi.y) / 2, hi.z if anchor == 'top' else lo.z))
 obj.data.transform(Matrix.Translation(-pivot))
 
-for img in bpy.data.images:
+for img in list(bpy.data.images):
     w, h = img.size
+    if not w:
+        continue
     if max(w, h) > max_tex:
         k = max_tex / max(w, h)
         img.scale(max(1, round(w * k)), max(1, round(h * k)))
+        w, h = img.size
+
+# The importer wires metalness as Separate(B) x factor through a Math node. The exporter then can't
+# reuse the texture and builds a 1-channel roughness image that it can't write as WebP (Blender 4.5).
+# Bake the factor into a proper RGB metal/roughness image (G roughness, B metalness) and wire it directly.
+for mat in obj.data.materials:
+    if not (mat and mat.use_nodes):
+        continue
+    nt = mat.node_tree
+    for bsdf in [n for n in nt.nodes if n.type == 'BSDF_PRINCIPLED']:
+        r_in, m_in = bsdf.inputs['Roughness'], bsdf.inputs['Metallic']
+        if not (r_in.is_linked and m_in.is_linked):
+            continue
+        sep, math = r_in.links[0].from_node, m_in.links[0].from_node
+        if sep.type != 'SEPARATE_COLOR' or math.type != 'MATH' or math.operation != 'MULTIPLY':
+            continue
+        a, b = math.inputs[0], math.inputs[1]
+        factor = b.default_value if a.is_linked else a.default_value
+        tex = sep.inputs['Color'].links[0].from_node if sep.inputs['Color'].is_linked else None
+        if not (tex and tex.type == 'TEX_IMAGE'):
+            continue
+        src = tex.image
+        w, h = src.size
+        n = src.channels
+        px = src.pixels[:]
+        rgb = bpy.data.images.new(src.name + '_mr', w, h, alpha=False)
+        rgb.colorspace_settings.name = 'Non-Color'
+        buf = [0.0] * (w * h * 4)
+        for i in range(w * h):
+            g = px[i * n + (1 if n > 1 else 0)]
+            bl = px[i * n + (2 if n > 2 else 0)]
+            buf[i * 4:i * 4 + 4] = (1.0, g, bl * factor, 1.0)
+        rgb.pixels = buf
+        tex.image = rgb
+        nt.links.remove(m_in.links[0])
+        nt.links.new(sep.outputs['Blue'], m_in)
+        nt.nodes.remove(math)
 
 bpy.ops.export_scene.gltf(
     filepath=out, export_format='GLB', export_image_format='WEBP', export_image_quality=80,

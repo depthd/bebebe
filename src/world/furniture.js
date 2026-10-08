@@ -9,7 +9,7 @@ import pharaohs from '../assets/art/pharaohs.webp?inline';
 
 const ART = { frogs, mushrooms, pharaohs };
 import { boxGeo, mat } from './apartment.js';
-import { model } from './models.js';
+import { model, modelSize } from './models.js';
 import * as T from './textures.js';
 
 const M = {
@@ -28,11 +28,8 @@ const M = {
   blanketOleg: mat('#46607a', { roughness: 0.95 }),
   blanketSister: mat('#d67fa0', { roughness: 0.95 }),
   pillow: mat('#efe9dc', { roughness: 0.95 }),
-  leaf: mat('#2f6b2f', { roughness: 0.8 }),
-  pot: mat('#9b4e2c', { roughness: 0.8 }),
   glassDoor: mat('#a7c4c9', { roughness: 0.15, metalness: 0.2 }),
   water: new THREE.MeshStandardMaterial({ color: '#9cc9d6', roughness: 0.1, transparent: true, opacity: 0.8 }),
-  bulb: new THREE.MeshBasicMaterial({ color: '#fff2d0' }),
   crystal: mat('#dfe8ee', { roughness: 0.05, metalness: 0.3 }),
   coals: new THREE.MeshStandardMaterial({ color: '#2a1208', emissive: '#ff5a10', emissiveIntensity: 1.5 }),
   rag: mat('#c7b24a', { roughness: 1 }),
@@ -75,6 +72,17 @@ function framer(item, group) {
       const [x, z] = world(u, v);
       return add(new THREE.SphereGeometry(r, 14, 10).translate(x, y, z), material);
     },
+    // a 3D model (world/models.js) standing at (u, v) on height y, its front (+z as built) facing out
+    // of the furniture (+v), turned by `turn` radians; h scales it to that height in meters
+    model(id, u, v, y, { h, turn = 0 } = {}) {
+      const m = model(id);
+      const [x, z] = world(u, v), [fx, fz] = world(u, v + 1);
+      m.position.set(x, y, z);
+      m.rotation.y = Math.atan2(fx - x, fz - z) + turn;
+      if (h) m.scale.setScalar(h / modelSize(id).y);
+      group.add(m);
+      return m;
+    },
   };
 }
 
@@ -114,8 +122,8 @@ const BUILD = {
     f.box(0, U, 0.72, 0.76, 0, D, M.lightWood);
     legs(f, 0, U, 0, D, 0.72, 0.04, M.lightWood);
     f.box(0.2, 0.55, 0.76, 0.79, 0.15, 0.45, M.blanketSister); // notebook
-    f.cyl(U - 0.2, 0.15, 0.76, 1.1, 0.07, 0.015, M.metal); // lamp
-    f.sph(U - 0.2, 0.2, 1.12, 0.06, M.bulb);
+    f.model('desk_lamp_arm_01', U - 0.16, 0.1, 0.76, { h: 0.45, turn: Math.PI - 0.5 }); // the arm reaches over the desk, not into the picture
+    f.model('alarm_clock_01', U - 0.5, 0.1, 0.76, { h: 0.12, turn: 0.3 });
     f.box(0.45, 0.85, 0.42, 0.47, D + 0.1, D + 0.5, M.lightWood); // stool
     f.cyl(0.65, D + 0.3, 0, 0.42, 0.03, 0.03, M.metal);
   },
@@ -154,6 +162,7 @@ const BUILD = {
       f.cyl(u, v, 0.88, 0.95, 0.006, 0.006, mat('#7fb3e0'));
       f.sph(u, v, 0.965, 0.012, new THREE.MeshBasicMaterial({ color: '#ffcf5a' }));
     }
+    f.model('russian_food_cans_01', 0.14, D - 0.12, 0.76, { turn: 2.6 }); // sprats and condensed milk
   },
   stenka(f) {
     const { U, D } = f;
@@ -174,11 +183,7 @@ const BUILD = {
     f.box(col + 0.1, U - col - 0.1, 0.83, 1.23, D - 0.02, D - 0.01, M.screen).userData.tvScreen = true; // drawn by src/game/living.js
   },
   ficus(f) {
-    const { U, D } = f;
-    f.cyl(U / 2, D / 2, 0, 0.3, 0.14, 0.17, M.pot);
-    f.cyl(U / 2, D / 2, 0.3, 0.9, 0.02, 0.02, M.wood);
-    for (const [du, dy, dv, r] of [[0, 1.0, 0, 0.2], [0.1, 0.85, 0.05, 0.16], [-0.1, 0.9, -0.05, 0.15], [0.05, 1.15, -0.05, 0.14]])
-      f.sph(U / 2 + du, D / 2 + dv, dy, r, M.leaf);
+    f.model('potted_plant_01', f.U / 2, f.D / 2, 0, { h: 1.25, turn: 0.5 });
   },
   fridge(f) {
     const { U, D } = f;
@@ -201,6 +206,9 @@ const BUILD = {
     }
     // wall cabinets above
     f.box(0, U, 1.5, 2.1, 0, 0.32, mat('#e7ddc7', { roughness: 0.6 }));
+    f.model('pot_enamel_01', U * 0.62, 0.2, 0.89, { h: 0.16, turn: 0.3 });
+    f.model('jug_01', U * 0.86, 0.17, 0.89, { h: 0.2, turn: -0.5 });
+    f.model('russian_food_cans_01', U * 0.8, 0.42, 0.89, { turn: 0.2 });
   },
   microwave(f) {
     const { U, D } = f;
@@ -222,7 +230,7 @@ const BUILD = {
     f.box(0, U, 0.85, 0.87, 0, D, M.black);
     for (const [du, dv] of [[0.16, 0.14], [U - 0.16, 0.14], [0.16, D - 0.16], [U - 0.16, D - 0.16]]) f.cyl(du, dv, 0.87, 0.885, 0.08, 0.08, mat('#333'));
     f.box(0.06, U - 0.06, 0.2, 0.65, D, D + 0.01, mat('#2a2a2a', { roughness: 0.2 }));
-    f.cyl(0.16, 0.14, 0.885, 1.05, 0.09, 0.07, mat('#b3372b')); // kettle
+    f.model('vintage_electric_kettle', 0.17, 0.15, 0.885, { h: 0.24, turn: 0.7 }); // the pelmeni pot takes the middle
   },
   kitchenTable(f) {
     const { U, D } = f;
@@ -280,6 +288,8 @@ const BUILD = {
     f.box(0.02, U / 2 - 0.01, 0.05, 2.15, D, D + 0.01, mat('#c9dde6', { roughness: 0.05, metalness: 0.6 }));
     f.box(U / 2 + 0.01, U - 0.02, 0.05, 2.15, D, D + 0.01, M.darkWood);
     f.box(U / 2 + 0.05, U / 2 + 0.08, 1.0, 1.2, D + 0.01, D + 0.03, M.metal);
+    f.model('cardboard_box_01', U * 0.28, D * 0.5, 2.2, { h: 0.3, turn: 0.15 }); // boxes on top, as on every soviet wardrobe
+    f.model('cardboard_box_01', U * 0.68, D * 0.45, 2.2, { h: 0.24, turn: -0.25 });
   },
   grill(f) {
     const { U, D } = f;

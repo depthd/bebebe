@@ -6,3 +6,11 @@ free for any use, commercial included, no attribution required. Authors are list
 | File | Used as | Source | Author | License |
 |---|---|---|---|---|
 | `Chandelier_02.glb` | люстра в зале | [Chandelier 02](https://polyhaven.com/a/Chandelier_02) | Kirill Sannikov | CC0 |
+| `vintage_electric_kettle.glb` | чайник на плите | [Vintage Electric Kettle](https://polyhaven.com/a/vintage_electric_kettle) | SV Garip | CC0 |
+| `pot_enamel_01.glb` | эмалированная кастрюля на кухне | [Pot Enamel 01](https://polyhaven.com/a/pot_enamel_01) | Kuutti Siitonen | CC0 |
+| `jug_01.glb` | кувшин на кухне | [Jug 01](https://polyhaven.com/a/jug_01) | Kuutti Siitonen | CC0 |
+| `russian_food_cans_01.glb` | шпроты, сгущёнка, соль | [Russian Food Cans 01](https://polyhaven.com/a/russian_food_cans_01) | Kosan Aziz | CC0 |
+| `alarm_clock_01.glb` | будильник у сестры на столе | [Alarm Clock 01](https://polyhaven.com/a/alarm_clock_01) | Yann Kervran, James Ray Cock | CC0 |
+| `desk_lamp_arm_01.glb` | настольная лампа сестры | [Desk Lamp Arm 01](https://polyhaven.com/a/desk_lamp_arm_01) | Yann Kervran, Kuutti Siitonen | CC0 |
+| `potted_plant_01.glb` | фикус в зале | [Potted Plant 01](https://polyhaven.com/a/potted_plant_01) | Rico Cilliers | CC0 |
+| `cardboard_box_01.glb` | коробки на шкафу в прихожей | [Cardboard Box 01](https://polyhaven.com/a/cardboard_box_01) | Rahul Chaudhary | CC0 |
