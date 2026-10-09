@@ -663,18 +663,11 @@ export class Robot {
     // standing on both feet the falling point is between them anyway: sideways only how far it is off the
     // middle of a natural stance gets the lead (leading all of it put the foot wider every step, until he
     // stood astride a metre)
-    if (!walking && R.natural) {
+    if (!walking) {
       const mid = (s * R.natural) / 2, want = 2 * mid + (side - mid) * e * over;
       tx += left.x * (want - side * e * over);
       tz += left.z * (want - side * e * over);
       wide = 0;
-      // bringing in a foot from a split: next to the other one, level with where he's falling, no lead (a
-      // lead put it out a split again)
-      if (this.debug.why === 'split' && R.closeIn) {
-        const fr0 = (xi.x - px) * fwd.x + (xi.z - pz) * fwd.z;
-        tx = px - fwd.x * 0.05 + fwd.x * fr0 + left.x * 2 * mid;
-        tz = pz - fwd.z * 0.05 + fwd.z * fr0 + left.z * 2 * mid;
-      }
     }
     tx += -this.vd.x * b * R.stride + left.x * s * wide + g.miss.x;
     tz += -this.vd.z * b * R.stride + left.z * s * wide + g.miss.z;

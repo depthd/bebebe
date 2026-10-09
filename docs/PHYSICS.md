@@ -62,7 +62,7 @@ Lab numbers (fixed 1/30 s frames, like a weak laptop; `npm run robot`):
 | walking straight, zigzag, round 90° corners | 0 falls (4 guys each) |
 | shoved 0.6 m/s in each of 4 directions | 0 falls, 2–4 stumbling steps |
 | shoved backwards 0.6–1.8 m/s (one guy each) | 1 of 4 goes down (was 4 of 4) |
-| random shoves 0.6–1.8 m/s, 16 per guy | 8 of 58 go down (was 18 of 43) |
+| random shoves 0.6–1.8 m/s, 16 per guy | 6 of 58 go down (was 18 of 43) |
 | walking speed | about 0.4 m/s asked 1.0: a shuffle |
 
 In the game with `?phys=new` (start of night 1, sober, 3 seeded runs × 90 s, 4 guys): **3–5 falls**, down from
@@ -85,6 +85,14 @@ What made the difference, in order:
 5. Standing spots next to furniture keep 0.5 m clear, so a step forward doesn't put a knee into the table.
 6. A guy standing about walks back to where he stopped once he's staggered half a metre off. Every catch is a
    step somewhere: in a 7-minute run a guy "at the table" had ended up in the hall.
+7. A sideways catch leads only how far he's off a natural stance (0.18 m between the feet), not the whole way
+   from the standing foot: on two feet the falling point is between them anyway, and leading all of it put
+   each foot wider than the last, until he stood astride a metre and kept stepping to bring them in. Random
+   shoves: 8 of 58 → 6 of 58 go down.
+
+Standing about in the game a guy still steps about once a second: a third to bring his feet in after a
+split, a third catching himself backwards, the rest turning to face someone and sideways catches; more than
+half of it while a gesture (talking, laughing) is playing. A robot fidgeting, not shaking; left as is.
 
 Cost: physics 1.8–2.5 ms per frame vs 1.6 ms for the old ragdolls (headless, 4 guys, 30 fps). 8 or 10 solver
 iterations instead of 12 save up to 20% but more guys go down from shoves (12 and 10 of 58 vs 8), and the
