@@ -34,8 +34,9 @@ not decoration.
 - **Drunk**: weaker and slower joints, late steps (he reacts to where his body was), sloppy foot placement,
   a sense of up that wanders off (he leans, then has to catch it). The sway starts with the first glass; the
   legs go on a curve (`drunkCurve`: drunk^5), so as CONCEPT.md asks, up to ~50% he only sways and stumbles,
-  at 80% he goes down about every half a minute, at 100% several times (lab, `npm run robot drunk`, DRUNK=…:
-  0 / 1.25 / 3 falls per guy in 30 s).
+  at 80% he goes down about every half a minute, at 100% several times (lab, `npm run robot drunk`, DRUNK=…,
+  walking back and forth all the time: 0.25 / 1.75 / 2.75 falls per guy in 30 s; in the game, where they also
+  sit and stand about, 80% is a fall every minute and a half).
 - **Falling** is real (the torso past ~57°); on the floor the joints go slack. **Getting up** is played from
   the pose he lies in (face down: push up, kneel, a foot forward, up; face up: sit up, tuck, squat, up); the
   first try may sag back down. No lift, no snap.
@@ -66,8 +67,8 @@ Lab numbers (fixed 1/30 s frames, like a weak laptop; `npm run robot`):
 | walking speed | about 0.4 m/s asked 1.0: a shuffle |
 
 In the game with `?phys=new` (start of night 1, sober, 3 seeded runs × 90 s, 4 guys): **3–5 falls**, down from
-39 at the start of the night and 13 before the last fixes. Everyone half drunk: 9 falls (one per guy every two
-minutes); at 80%: 24 (one every 45 s). Slow as they walk, they get where they're going as often as the old ones
+39 at the start of the night and 13 before the last fixes. Everyone half drunk: 7 falls (one per guy every
+2.5 minutes); at 80%: 12 (one every 1.5 minutes). Slow as they walk, they get where they're going as often as the old ones
 (41 arrivals vs 31 in the same runs). No teleports (none exist any more), nobody inside the
 furniture, real falls and get-ups. What's left: bumping into a wall or each other while turning, and a guy
 who is already a bit drunk.
