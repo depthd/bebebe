@@ -2,7 +2,7 @@
 // puddles, broken things, the stove, the grill, the cat toy and Oleg himself.
 import * as THREE from 'three';
 import { TUNE } from '../config.js';
-import { TOY_SPOTS, VISITOR_SPOT, CAT_SPOTS, SPOTS, roomAt } from '../world/layout.js';
+import { TOY_SPOTS, VISITOR_SPOT, CAT_SPOTS, SPOTS, BOUNDS, BALCONY, roomAt } from '../world/layout.js';
 import { makePerson, makePuddle, makeToy, makeBottle, makePlate, makeBrokenMark, makeBucket } from '../world/figures.js';
 import { Friend, Cat, clamp, rand, makeBody } from './friends.js';
 import { particles } from '../world/particles.js';
@@ -79,6 +79,11 @@ class Inventory {
   drop() {
     const item = this.slots[this.sel];
     if (!item) return;
+    if (item === 'cat') {
+      if (this.game.dropCat()) this.slots[this.sel] = null;
+      else this.game.toastOnce('catOut', 'Кота тут не отпустишь — потеряется. Неси домой', 'warn', 3);
+      return;
+    }
     this.slots[this.sel] = null;
     if (item === 'shower') return this.game.hands.returnShower();
     // outside the flat there's no fridge to put it back in: in the shop it goes back on the shelf
@@ -89,7 +94,6 @@ class Inventory {
     if (item === 'pelmeni') return void this.game.state.fridge.pelmeni++;
     if (item === 'toy') this.game.dropToy();
     else if (item === 'bucket' || item === 'water') this.game.dropBucket(item === 'water');
-    else if (item === 'cat') this.game.dropCat();
     else if (['beer', 'vodka', 'food'].includes(item)) this.game.state.fridge[item] += 1; // back to the fridge
   }
 }
@@ -318,9 +322,8 @@ export class Game {
       this.inv.swap('water', 'bucket');
       this.sfx.splash();
       this.toast(`${msg} и облился из ведра`, 'bad');
-    } else if (it === 'cat') {
+    } else if (it === 'cat' && this.dropCat()) {
       this.inv.remove('cat');
-      this.dropCat();
       this.toast(`${msg}, кот удрал`, 'bad');
     } else this.toast(msg, 'bad');
     o.fun = clamp(o.fun - 3);
@@ -470,6 +473,7 @@ export class Game {
     this.leaving = [];
     this.visitorGap = 0;
     this.visitor = null;
+    this.camSeen = null; // the visitor Oleg last saw on the door camera (set in main.js)
     this.visitorQueue = [];
     this.pending = [];
     this.stove = { phase: 'idle', t: 0 };
@@ -709,11 +713,36 @@ export class Game {
     this.toy.visible = true;
   }
 
-  // put the cat down in front of Oleg (G, or Q while holding him = pet instead)
+  // inside the flat: its rooms, the balcony and the doorways between them (not the landing, the stairs, the yard)
+  inFlat(x, z) {
+    const r = roomAt(x, z);
+    return r ? r.id !== 'landing' : x > BOUNDS.x0 && x < BOUNDS.x1 && z > BOUNDS.z0 && z < BOUNDS.z1;
+  }
+
+  // the cat leaves Oleg's hands (G, or Oleg falls with him) up to 0.6 m ahead: never through a wall, the
+  // balcony glazing, a shut door or into furniture. Facing the open sash up close, out of the window he goes,
+  // and falls for real. False = Oleg isn't in the flat: the cat stays in his arms
   dropCat() {
-    const [x, z] = this.olegPos;
-    const yaw = this.olegYaw ?? 0;
-    this.cat.putDown(x - Math.sin(yaw) * 0.6, z - Math.cos(yaw) * 0.6);
+    const [x, z] = this.olegPos, yaw = this.olegYaw ?? 0;
+    if (!this.inFlat(x, z)) return false;
+    const dx = -Math.sin(yaw), dz = -Math.cos(yaw);
+    const sash = this.living.sashSpan;
+    if (sash && this.living.windowOpen && roomAt(x, z)?.id === 'balcony' && Math.abs(dz) > 1e-3) {
+      const t = (sash.z - z) / dz, xc = x + dx * t;
+      if (t > 0 && t < 0.75 && xc > sash.x0 + 0.06 && xc < sash.x1 - 0.06) {
+        this.cat.carried = false;
+        this.catFell({ from: [xc, 1.3, sash.z], vel: [dx * 1.6, 1.2, dz * 1.6] });
+        return true;
+      }
+    }
+    let d = 0;
+    for (let s = 0.05; s < 0.6 + 1e-6; s += 0.05) {
+      const px = x + dx * s, pz = z + dz * s;
+      if (!this.inFlat(px, pz) || this.bodyBlocked(px, pz, 0.1)) break;
+      d = s;
+    }
+    this.cat.putDown(x + dx * d, z + dz * d);
+    return true;
   }
 
   fanGrill() {
@@ -721,21 +750,30 @@ export class Game {
     this.sfx.whoosh();
   }
 
-  catFell() {
+  // out of the sash: he really falls, down into the yard, and sits there until Oleg runs down for him; if
+  // nobody does, the neighbour brings him up. `toss` = Oleg threw him (where from, how fast); else he climbed
+  // out over the windowsill himself
+  catFell(toss) {
     const c = this.cat;
-    c.gone = true;
+    if (c.gone) return;
     c.clearProblem(false);
-    c.figure.root.visible = false;
+    const sash = this.living.sashSpan;
+    const out = Math.sign((sash?.z ?? BALCONY.z0) - (BALCONY.z0 + BALCONY.z1) / 2) || -1; // away from the flat
+    const from = toss?.from ?? [c.pos[0], (CAT_SPOTS.catRail.y ?? 1) + 0.1, sash?.z ?? c.pos[1]];
+    c.startFall(from, toss?.vel ?? [0, 0.8, out * 1.1]);
     this.state.totalFun -= TUNE.cat.fallPenalty;
     for (const f of this.friends) f.fun -= 15;
     this.alert('КОТ ВЫПАЛ С БАЛКОНА!', 'Балкон');
     this.pending.push({
       at: this.state.t + 20,
-      fn: () =>
+      fn: () => {
+        if (!c.gone) return; // Oleg already went down and got him
+        c.takenAway(); // the neighbour picked him up in the yard
         this.queueVisitor({
           type: 'cat', name: 'Соседка с котом', shirt: '#8e6c8a', patience: 30,
           onOpen: () => {
             c.gone = false;
+            c.fall = null;
             c.figure.root.visible = true;
             c.fun = 50;
             c.path = null;
@@ -745,7 +783,8 @@ export class Game {
           },
           onTimeout: () => this.toast('Соседка ушла с котом… придёт ещё', 'bad'),
           retry: true,
-        }),
+        });
+      },
     });
   }
 
@@ -799,6 +838,17 @@ export class Game {
   queueVisitor(v, urgent = false) {
     if (urgent) this.visitorQueue.unshift(v);
     else this.visitorQueue.push(v);
+  }
+
+  // what Oleg knows about who is knocking (HUD banner + door prompt): the name only once he saw that visitor
+  // on the door camera (CONCEPT: who came is only seen in the phone), and a warning when the one he saw left
+  // and someone else came up the stairs
+  get doorNews() {
+    const v = this.visitor, seen = this.camSeen;
+    if (!v) return '';
+    if (v === seen) return `Стучит: ${v.name} (ещё ${Math.max(0, Math.ceil(v.left))} с)`;
+    if (seen && seen.left <= 0 && seen.name !== v.name) return `За дверью уже не ${seen.name} — глянь камеру`;
+    return 'Кто-то стучит';
   }
 
   showVisitor(v) {
@@ -955,6 +1005,7 @@ export class Game {
     door.setOpen(true);
     this.entranceCloseT = 2.5;
     const v = this.visitor;
+    this.camSeen = null; // he sees who it is now
     if (!v) return this.toast('Никого нет', 'info');
     v.onOpen();
     this.dismissVisitor();
@@ -1134,7 +1185,8 @@ export class Game {
       const baseInfo = target.info;
       target.actions = () => {
         if (!item.broken) return base();
-        if (!this.inv.has('tools')) return [];
+        // the tools live in the wardrobe: a smashed wardrobe still gives them out
+        if (!this.inv.has('tools')) return item === it.wardrobe ? base() : [];
         return [{
           key: 'R', text: 'Починить', cost: TUNE.cost.repair,
           run: () => {
@@ -1145,7 +1197,7 @@ export class Game {
           },
         }, ...base().filter((a) => a.key !== 'R')];
       };
-      target.info = () => (item.broken ? (this.inv.has('tools') ? 'СЛОМАНО' : 'СЛОМАНО — инструменты в гардеробе') : baseInfo?.() ?? '');
+      target.info = () => (item.broken ? (this.inv.has('tools') || item === it.wardrobe ? 'СЛОМАНО' : 'СЛОМАНО — инструменты в гардеробе') : baseInfo?.() ?? '');
     }
 
     // doors
@@ -1154,7 +1206,7 @@ export class Game {
     d.bath.leaf.userData.target = { name: 'Дверь в санузел', actions: () => [{ key: 'E', text: d.bath.open ? 'Закрыть' : 'Открыть', run: () => d.bath.toggle() }] };
     d.entrance.leaf.userData.target = {
       name: 'Входная дверь',
-      info: () => (this.visitor ? 'Кто-то стучит' : ''),
+      info: () => this.doorNews,
       actions: () => [{ key: 'E', text: 'Открыть дверь', run: () => this.openEntrance() }],
     };
   }
@@ -1311,7 +1363,7 @@ export class Game {
     st.noise = Math.max(0, st.noise + (noise - N.decay) * dt);
     st.neighborCd -= dt;
     const threshold = N.neighborAt - st.anger * N.angerStep;
-    const policeWaiting = this.visitor?.type === 'police' || this.visitorQueue.some((v) => v.type === 'police' || v.type === 'neighbor');
+    const policeWaiting = ['police', 'neighbor'].includes(this.visitor?.type) || this.visitorQueue.some((v) => v.type === 'police' || v.type === 'neighbor');
     if (!policeWaiting && st.neighborCd <= 0 && st.noise >= threshold) {
       st.neighborCd = N.cooldown;
       if (st.anger >= TUNE.police.angerLimit) {
@@ -1358,6 +1410,7 @@ export class Game {
       }
       v.figure.update(dt);
       if (v.left <= 0) {
+        if (this.camSeen && this.camSeen !== v) this.camSeen = null;
         this.dismissVisitor();
         v.onTimeout();
         if (v.retry) this.pending.push({ at: st.t + 15, fn: () => this.queueVisitor({ ...v, figure: null }) });

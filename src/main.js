@@ -165,6 +165,13 @@ function play() {
 }
 
 function pause() {
+  // from the orbit view or the end screen: their overlays stay on top of the menu otherwise
+  if (mode === 'orbit') {
+    show('orbit-bar', false);
+    orbit.enabled = false;
+    apt.ceiling.visible = true;
+  }
+  show('end', false);
   mode = 'menu';
   setPhone(false, false);
   $('btn-play').textContent = started && !game.over ? 'Продолжить' : `Начать ночь ${game.night}`;
@@ -254,12 +261,14 @@ $('btn-next').addEventListener('click', () => {
 $('btn-menu').addEventListener('click', () => {
   game.over = null;
   started = false;
+  if (game.night < 1) game.night = 1; // after the last night onEnd rewinds to 0 for «Сначала»: the menu starts over too
   pause();
 });
 $('phone-close').addEventListener('click', () => setPhone(false));
 
 document.addEventListener('pointerlockchange', () => {
   locked = document.pointerLockElement === canvas;
+  if (locked) escHeld = false;
   if (!locked && mode === 'play' && !phoneOpen && !mini.active) pause();
 });
 document.addEventListener('mousemove', (e) => {
@@ -286,6 +295,7 @@ function setPhotoMode(on) {
 $('tab-photo').addEventListener('click', () => setPhotoMode(true));
 $('ico-photo').src = iconURL('camera');
 const losRay = new THREE.Raycaster();
+losRay.camera = camera; // apt.group has sprites (the lamp halos): three.js can't raycast a sprite without a camera and throws
 function snap() {
   // what's in frame: friends/cat doing something photogenic, close to the centre, not behind a wall
   const origin = camera.getWorldPosition(new THREE.Vector3());
@@ -302,7 +312,7 @@ function snap() {
     if (dist > P.range || ang > P.cone) continue;
     losRay.set(origin, to);
     losRay.far = dist - 0.3;
-    if (losRay.intersectObject(apt.group, true).length) continue;
+    if (losRay.intersectObject(apt.group, true).some((h) => !h.object.isSprite)) continue; // a lamp's glow is not a wall
     subjects.push({ f, moment, ang });
   }
   subjects.sort((a, b) => a.ang - b.ang);
@@ -343,6 +353,9 @@ addEventListener('mouseup', () => (dragging = false));
 addEventListener('wheel', (e) => mode === 'play' && game.inv.select(game.inv.sel + Math.sign(e.deltaY)));
 
 let currentActions = [];
+// Esc that closed a close-up (PC, pot) or the phone is still held: re-locking the mouse now lets the browser see
+// Esc released under the lock, drop it, and the game pauses. Re-lock on its keyup instead
+let escHeld = false;
 addEventListener('keydown', (e) => {
   if (e.code === 'Backquote' && !e.repeat) return perf.toggle(); // Ё: the performance meter
   if (perf.benching) return; // hands off while the benchmark runs
@@ -352,13 +365,20 @@ addEventListener('keydown', (e) => {
   if (e.repeat) return;
   const k = e.code;
   if (focusActive()) {
-    if (k === 'Escape') focuser().cancel();
+    if (k === 'Escape') {
+      escHeld = true;
+      focuser().cancel();
+    }
     return;
   }
   if (k === 'KeyC' && !phoneOpen) return setPhotoMode(!photoMode);
   if (photoMode && k === 'Escape') return setPhotoMode(false);
   if (k === 'KeyF') return setPhone(!phoneOpen);
-  if (k === 'Escape') return phoneOpen ? setPhone(false) : pause();
+  if (k === 'Escape') {
+    if (!phoneOpen) return pause();
+    escHeld = true;
+    return setPhone(false, false);
+  }
   if (phoneOpen || game.oleg.blackout > 0 || game.talkLocked) return;
   if (k.startsWith('Digit')) {
     const n = Number(k.slice(5));
@@ -377,8 +397,17 @@ addEventListener('keydown', (e) => {
     audio.sfx.click();
   } else if (k === 'KeyT') game.olegDance(); // nothing to do with T here: dance
 });
-addEventListener('keyup', (e) => player.keys.delete(e.code));
-addEventListener('blur', () => player.keys.clear());
+addEventListener('keyup', (e) => {
+  player.keys.delete(e.code);
+  if (e.code === 'Escape' && escHeld) {
+    escHeld = false;
+    if (mode === 'play' && !phoneOpen && !focusActive()) lock();
+  }
+});
+addEventListener('blur', () => {
+  player.keys.clear();
+  escHeld = false;
+});
 
 addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
@@ -455,8 +484,8 @@ function frame(now) {
       if (wasFocused) {
         wasFocused = false;
         use.down = false;
-        lock();
-        setTimeout(() => !locked && mode === 'play' && !focusActive() && game.toastOnce('relock', 'Кликни мышью, чтобы снова крутить головой', 'info', 4), 400);
+        if (!escHeld) lock(); // left with Esc: its keyup re-locks
+        setTimeout(() => !locked && !escHeld && mode === 'play' && !focusActive() && game.toastOnce('relock', 'Кликни мышью, чтобы снова крутить головой', 'info', 4), 400);
       }
       // the phone is in his hand: he can keep walking with it (WASD), the mouse is on the screen
       const px = player.x, pz = player.z;
@@ -546,6 +575,7 @@ function frame(now) {
 
   const r = perf.cfg.render && mode === 'play' && hud.camRect();
   if (r) {
+    game.camSeen = game.visitor; // Oleg is looking at the door camera: now he knows who is there
     doorCam.aspect = r.width / r.height;
     doorCam.updateProjectionMatrix();
     const y = innerHeight - r.bottom;

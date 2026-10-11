@@ -231,6 +231,7 @@ export class Living {
     g.dynamic.add(pivot);
     this.sash = pivot;
     this.sashOpen = 0;
+    this.sashSpan = { x0, x1, z }; // where the opening is (game.dropCat: a cat thrown through it falls out)
     const target = {
       name: 'Створка на балконе',
       info: () => (this.windowOpen ? 'Открыта: кот может выпасть' : 'Закрыта'),

@@ -201,6 +201,8 @@ export function createHUD({ onBuy }) {
       el.handName.textContent = game.inv.selectedItem() ? ITEMS[game.inv.selectedItem()].name : '';
 
       el.doorAlert.hidden = !game.visitor || !el.phone.hidden;
+      // who's knocking: the name only once he saw them on the camera, a warning if someone else came up since
+      if (game.visitor) set('doorAlert', el.doorAlert, `${esc(game.doorNews)} · F — камера`);
       el.blackout.hidden = !(game.oleg.blackout > 0);
 
       if (!el.phone.hidden) {
@@ -210,7 +212,7 @@ export function createHUD({ onBuy }) {
           money = st.money;
           updateSlide();
         }
-        el.camWho.textContent = game.visitor ? `Стучит: ${game.visitor.name}. Открой дверь в прихожей` : 'У двери никого';
+        el.camWho.textContent = game.visitor ? `Стучит: ${game.visitor.name} (ещё ${Math.max(0, Math.ceil(game.visitor.left))} с). Открой дверь в прихожей` : 'У двери никого';
         el.camWho.classList.toggle('busy', !!game.visitor);
         set('orders', el.orders, game.orders
           .map((o) => `<div class="order">${iconImg(o.icon ?? 'cart', '')}<div class="bar"><i style="width:${(100 * (1 - Math.max(0, o.eta) / o.total)).toFixed(0)}%"></i></div><span>~${game.gameMinutes(Math.max(0, o.eta))} мин</span></div>`)

@@ -1,6 +1,7 @@
 // The guys and the cat: movement, activities, problems (the chaos Oleg has to calm down).
 import { TUNE } from '../config.js';
 import { SPOTS, CAT_SPOTS, roomAt } from '../world/layout.js';
+import { STREET } from '../world/outside.js';
 import { makePerson, makeCat } from '../world/figures.js';
 import { Ragdoll } from '../world/ragdoll.js';
 import { Robot } from '../world/robot.js';
@@ -12,7 +13,12 @@ import { NAV } from '../world/layout.js';
 export const ROBOTS = typeof location !== 'undefined' && new URLSearchParams(location.search).get('phys') === 'new';
 export const makeBody = (rig) => (ROBOTS ? new Robot(rig) : new Ragdoll(rig));
 
-export const nearestNode = (x, z) => Object.entries(NAV).reduce((b, [k, [nx, nz]]) => (Math.hypot(nx - x, nz - z) < b.d ? { k, d: Math.hypot(nx - x, nz - z) } : b), { k: 'living', d: 1e9 }).k;
+// `room`: only the nodes in that room (one behind a wall can be nearer as the crow flies, and walking to it goes
+// through the wall); none there: any
+export const nearestNode = (x, z, room) => {
+  const all = Object.entries(NAV), here = room ? all.filter(([, p]) => roomAt(...p)?.id === room) : all;
+  return (here.length ? here : all).reduce((b, [k, [nx, nz]]) => (Math.hypot(nx - x, nz - z) < b.d ? { k, d: Math.hypot(nx - x, nz - z) } : b), { k: 'living', d: 1e9 }).k;
+};
 
 export const rand = (a, b) => a + Math.random() * (b - a);
 export const chance = (perSec, dt) => Math.random() < perSec * dt;
@@ -1148,9 +1154,12 @@ export class Friend extends Walker {
 
     if (a.id === 'toilet') this.bladder = Math.max(0, this.bladder - 40 * dt);
 
-    if (!this.problem) {
+    // 'gamble' is the PC session itself (pc.js sitFriend), not trouble he waits on: his time still runs out, and
+    // he gets up once the spin he's watching is over
+    const atPC = this.problem?.id === 'gamble';
+    if (!this.problem || atPC) {
       a.left -= dt;
-      if (a.left <= 0) this.endActivity();
+      if (a.left <= 0 && !(atPC && g.pc.spin)) this.endActivity();
     }
   }
 
@@ -1225,7 +1234,7 @@ export class Cat extends Walker {
   }
 
   get statusText() {
-    if (this.gone) return 'ВЫПАЛ С БАЛКОНА';
+    if (this.gone) return this.fall?.landed && !this.fall.taken ? 'ВЫПАЛ — сидит во дворе' : 'ВЫПАЛ С БАЛКОНА';
     if (this.carried) return 'у тебя на руках';
     if (this.problem) return this.problem.short;
     if (this.playLeft > 0) return 'играет с мышкой';
@@ -1253,6 +1262,13 @@ export class Cat extends Walker {
   pickUp() {
     const g = this.game;
     if (!g.inv.add('cat')) return false;
+    if (this.gone) {
+      // fetched from the yard: the fall is over, he's coming home in Oleg's arms
+      this.gone = false;
+      this.fall = null;
+      this.figure.root.rotation.set(0, this.heading, 0);
+      g.toast('Кот у тебя. Живой! Неси домой', 'good');
+    }
     if (this.problem?.id === 'rail') this.clearProblem(true);
     else if (this.problem) this.clearProblem(false);
     this.carried = true;
@@ -1272,11 +1288,58 @@ export class Cat extends Walker {
     return null;
   }
 
+  // out of the sash (game.catFell): from `from` [x, y, z] with velocity `vel`, down to the yard
+  startFall(from, vel) {
+    this.gone = true;
+    this.carried = false;
+    this.path = null;
+    this.mode = 'idle';
+    this.spot = null;
+    this.playLeft = 0;
+    this.railT = this.balconyT = 0;
+    this.fall = { p: [...from], v: [...vel], spin: 0, landed: false, taken: false, t: 0 };
+    this.heading = Math.atan2(vel[0], vel[2]);
+    this.figure.root.visible = true;
+  }
+
+  // the neighbour picked him up in the yard (she'll bring him to the door)
+  takenAway() {
+    if (this.fall) this.fall.taken = true;
+    this.figure.root.visible = false;
+  }
+
+  // falling (spinning, then feet first like a cat), then sitting in the yard waiting to be picked up
+  fallTick(dt) {
+    const f = this.fall, root = this.figure.root;
+    if (!f || f.taken) return;
+    this.t += dt;
+    if (!f.landed) {
+      f.v[1] -= 9.8 * dt;
+      for (const i of [0, 1, 2]) f.p[i] += f.v[i] * dt;
+      f.spin += dt;
+      if (f.p[1] <= STREET) {
+        f.p[1] = STREET;
+        f.landed = true;
+        f.t = 0;
+        this.game.sfx.pat?.();
+        this.game.toast('Кот приземлился во дворе. Живой! Можно сбегать за ним', 'warn');
+      }
+    } else f.t += dt;
+    this.pos = [f.p[0], f.p[2]];
+    this.y = f.p[1];
+    root.position.set(f.p[0], f.p[1], f.p[2]);
+    // tumbling at first, then he turns himself right way up before the ground
+    const k = f.landed ? 0 : Math.max(0, 1 - f.spin / 0.55);
+    root.rotation.set(Math.sin(f.spin * 11) * 1.2 * k, this.heading + f.spin * 4 * k, Math.cos(f.spin * 9) * 0.9 * k);
+    this.figure.animate(this.t, false, { crouch: f.landed ? Math.max(0, 1 - f.t / 0.6) : 0.4, pounce: 0, bat: 0 });
+    this.figure.showName?.(Math.hypot(this.game.olegPos[0] - this.pos[0], this.game.olegPos[1] - this.pos[1]) < 3.2);
+  }
+
   // put down in front of Oleg
   putDown(x, z) {
     this.carried = false;
     this.pos = [x, z];
-    this.node = nearestNode(x, z);
+    this.node = nearestNode(x, z, roomAt(x, z)?.id);
     this.spot = { id: 'floor', node: this.node, p: [x, z], pose: null };
     this.y = 0;
     this.mode = 'idle';
@@ -1285,7 +1348,7 @@ export class Cat extends Walker {
   }
 
   update(dt) {
-    if (this.gone) return;
+    if (this.gone) return this.fallTick(dt);
     const g = this.game, C = TUNE.cat;
     this.t += dt;
     this.figure.showName?.(!this.carried && Math.hypot(g.olegPos[0] - this.pos[0], g.olegPos[1] - this.pos[1]) < 3.2); // like the guys: only up close
@@ -1427,7 +1490,7 @@ export class Cat extends Walker {
     this.path = null;
     this.mode = 'idle';
     this.idleLeft = rand(3, 6);
-    this.node = nearestNode(this.pos[0], this.pos[1]);
+    this.node = nearestNode(this.pos[0], this.pos[1], this.room?.id);
     this.spot = { id: 'floor', node: this.node, p: [...this.pos], pose: null };
     if (hid && g.toyLoose) {
       g.respawnToy();
@@ -1446,7 +1509,8 @@ export class Cat extends Walker {
   }
 
   actions(g) {
-    if (this.gone || this.carried) return [];
+    if (this.carried) return [];
+    if (this.gone) return this.fall?.landed && !this.fall.taken ? [{ key: 'E', text: 'Подобрать кота', run: () => this.pickUp() }] : [];
     const list = [{
       key: 'E', text: this.problem?.id === 'rail' ? 'Схватить кота с окна!' : 'Взять на руки', cost: TUNE.cost.catRescue,
       run: () => this.pickUp(),
