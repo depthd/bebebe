@@ -101,6 +101,13 @@ world is shared with the old ragdolls: kept at 12.
 
 ## Next
 
+Owner's feedback after playing `?phys=new` (10 Oct): better, but **no felt difference between sober and drunk,
+and they fall too easily**. Parked until he says go. One likely reason for the first part is not physics:
+drunkenness decays at a hard-coded 0.4/s (friends.js, Friend.update) while a guy sips every 20-37 s, so in
+headless nights everyone but Lyokha stays at drunk 0-25 unless Oleg hands out vodka (the quarrel event,
+which needs drunk > 35, never fired in 5 simulated nights). The bodies only get drunk when the guys do.
+
+
 - Walking is slow (a robot shuffle, ~0.4 m/s). Faster costs falls and buys nothing: `stride` 1.5 doubles the
   falls in the game (10 vs 5); `walkSpeed` 1.4 (+25% in the lab) gives 8 falls vs 3 and fewer arrivals (32 vs
   41); 1.4 with `stride` 1.25 (+55%) 7 falls, 40 arrivals. Kept at 1.0 / 1.
