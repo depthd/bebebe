@@ -74,6 +74,8 @@ function nextFilter(step = 1) {
   filterNameT = setTimeout(() => n.classList.remove('on'), 1600);
 }
 game.attachOutside(outside);
+// art-style prototypes (?style=<id>, src/styles/, docs/STYLE.md): nothing loads without the parameter
+const look = params.has('style') ? await (await import('./styles/index.js')).applyStyle(params.get('style'), { scene, renderer, camera, composer: fx.composer, apt, furn, outside, game }) : null;
 const hud = createHUD({ onBuy: (cart) => game.buyCart(cart) });
 // close-up hands-on scenes (pelmeni): the mouse is free, the camera flies in, the world slows down
 // close-ups where the camera flies to something and the mouse works on it: the pelmeni pot, the PC
@@ -563,6 +565,7 @@ function frame(now) {
   filters.update(time, game.clock);
 
   lightPool.update(dt, mode === 'play' && hud.camRect() ? [camera, doorCam] : [mode === 'orbit' ? orbitCam : camera]);
+  look?.update(dt, time);
   perf.renderStart();
   if (!perf.cfg.render) { /* benchmark: logic only */ }
   else if (mode === 'orbit') renderer.render(scene, orbitCam);

@@ -10,7 +10,7 @@ Browser 3D game (three.js + Vite, vanilla JS), a birthday gift. FNAF × Who's Yo
 - `npm run assets [id...]` rebuilds `src/assets/models/*.glb` from `scripts/assets/assets.json`: downloads each source once into `.cache/`, runs it through headless Blender (`scripts/assets/blender_build.py`: one mesh, triangle budget, textures shrunk, origin at the base or top), and rewrites `src/assets/models/LICENSES.md`. Needs Blender 4.5 on PATH (or `BLENDER=`).
 - Pushes to the default branch build and deploy to GitHub Pages (`.github/workflows/pages.yml`)
 - `npm run robot -- [scenario...] [--video name]` measures the new physical bodies in `lab.html` at a fixed 1/30 s frame (stand, push, walk, turn, zigzag, drunk, robust = fall rate per push strength) and can render videos to `shots/robot/` (needs ffmpeg). `TUNE='{"walkSpeed":0.8}'`, `SEED=`, `CAM=mid|side|close|follow` tweak a run.
-- `npm run shots -- <name> [1,3,...]` saves eye-level screenshots of 14 fixed views (every room, landing, yard, shop) to `shots/<name>/`, plus 2x2 contact sheets. Run it before and after any visual change and compare the sheets; a top-down look does not count as seeing the result.
+- `npm run shots -- <name> [1,3,...]` saves eye-level screenshots of 14 fixed views (every room, landing, yard, shop) to `shots/<name>/`, plus 2x2 contact sheets. Run it before and after any visual change and compare the sheets; a top-down look does not count as seeing the result. `QUERY='style=ps1'` adds URL parameters to every view.
 
 ## Map of the code
 
@@ -48,6 +48,7 @@ URL params:
 - `?phys=new` plays the guys with the new bodies (`world/robot.js`); `?lab` (or `lab.html`) opens the physics lab.
 - `?perf` (or the Ё / Backquote key) shows the performance meter; `?bench` runs the one-minute benchmark (`src/perf.js`) and ends with a copyable report.
 - `?view=top` or `?view=orbit` opens the dollhouse view.
+- `?style=<id>` lays an art-style prototype over the whole game (`src/styles/<id>.js`, contract in `src/styles/index.js`); without it nothing of them loads.
 - `?heads=box` shows the old cube heads (debug only; the game always uses flat sprite heads).
 - `?play` starts without pointer lock. Add `x`, `z`, `yaw`, `pitch` (degrees) to place Oleg, `t=SECONDS` to fast-forward the sim, `phone` to open the phone, `night=N` to pick a night, `eye=METERS` to move the camera up (e.g. `eye=6&pitch=-89` for a close top-down look).
 

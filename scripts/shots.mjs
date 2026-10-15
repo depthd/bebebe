@@ -2,7 +2,7 @@
 // Starts the dev server, opens the game in headless Chromium, stands Oleg at fixed points
 // (every room, the landing, the yard, the shop) at eye height, and saves each view plus
 // contact sheets of four (shots/<name>/sheet-N.png). Same points every run, so two runs
-// (`npm run shots -- before`, then `-- after`) compare directly.
+// (`npm run shots -- before`, then `-- after`) compare directly. QUERY='style=ps1' adds URL parameters.
 // The party runs for a while first, then the simulation is frozen so every view sees the same moment.
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer } from 'vite';
@@ -49,7 +49,7 @@ page.on('console', (m) => m.type() === 'error' && !m.text().includes('404') && e
 
 const frames = (n) => page.evaluate((n) => new Promise((r) => { const f = () => (--n <= 0 ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); }), n);
 try {
-  await page.goto(`${url}?play&t=20`, { waitUntil: 'load', timeout: 120000 });
+  await page.goto(`${url}?play&t=20${process.env.QUERY ? `&${process.env.QUERY}` : ''}`, { waitUntil: 'load', timeout: 120000 });
   await page.addStyleTag({ content: '#hud, .perf { display: none !important; }' });
   await frames(3);
   // freeze the party: same moment in every view
