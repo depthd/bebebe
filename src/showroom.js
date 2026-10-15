@@ -10,6 +10,8 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { makeFX } from './fx.js';
 import * as T from './world/textures.js';
 import { mat, worldUV, boxGeo } from './world/apartment.js';
@@ -46,10 +48,11 @@ orbit.enabled = false;
 
 // ---------- the room: x along the back wall (0..W), z from the back wall into the room (0..D), y up.
 // The corner is the back wall (z = 0) and the left wall (x = 0); the other two walls are there so no
-// view ever sees past the edge.
-const W = 3.6, D = 3.0, H = 2.6, TH = 0.12;
-const WIN = { z0: 1.3, z1: 2.3, y0: 0.9, y1: 2.3 }; // the window in the left wall
-const LAMP = [1.8, 1.5];
+// view ever sees past the edge. 4 m wide: the fridge in the corner, the стенка, the armchair, the TV
+// and the plant stand side by side along the back wall without touching.
+const W = 4.0, D = 3.0, H = 2.6, TH = 0.12;
+const WIN = { z0: 1.0, z1: 2.0, y0: 0.9, y1: 2.3 }; // the window in the left wall
+const LAMP = [W / 2, 1.45];
 const room = new THREE.Group();
 scene.add(room);
 const add = (geo, m, parent = room) => {
@@ -100,15 +103,13 @@ function buildRoom() {
     add(boxGeo(x - 0.003, x + 0.003, WIN.y0 + f, WIN.y1 - f, WIN.z0 + f, WIN.z1 - f), glass);
   }
   add(boxGeo(-0.06, 0.07, WIN.y0 - 0.01, WIN.y0 + 0.03, WIN.z0 - 0.05, WIN.z1 + 0.05), mat('#f0ede6', { roughness: 0.4 }));
-  const rad = mat('#e9e4d6', { roughness: 0.5 });
-  const n = 9, step = 0.064, r0 = (WIN.z0 + WIN.z1) / 2 - (n * step) / 2;
-  for (let i = 0; i < n; i++) add(boxGeo(0.035, 0.115, 0.16, 0.7, r0 + i * step + 0.006, r0 + (i + 1) * step - 0.006), rad);
-  for (const y of [0.2, 0.64]) add(boxGeo(0.06, 0.09, y, y + 0.04, r0, r0 + n * step), rad);
+  buildRadiator();
+  buildCurtains();
 
   // night outside: the panel block across the yard, some windows lit; the ground far below
   const facade = new THREE.Mesh(new THREE.PlaneGeometry(36, 18), new THREE.MeshBasicMaterial({ map: T.cityFacade() }));
   facade.rotation.y = Math.PI / 2;
-  facade.position.set(-18, 3, 1.8);
+  facade.position.set(-18, 3, (WIN.z0 + WIN.z1) / 2);
   scene.add(facade);
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(60, 60).rotateX(-Math.PI / 2), mat('#101418'));
   ground.position.set(-20, -3, 0);
@@ -116,9 +117,9 @@ function buildRoom() {
 
   // the legendary wall carpet over the armchair and the TV, a rug on the floor
   const carpet = mat('#ffffff', { map: T.wallCarpet(), roughness: 0.95 });
-  add(new THREE.BoxGeometry(1.6, 1.0, 0.012).translate(1.95, 1.63, 0.012), [carpet, carpet, carpet, carpet, carpet, carpet]);
+  add(new THREE.BoxGeometry(1.6, 1.0, 0.012).translate(2.6, 1.68, 0.012), [carpet, carpet, carpet, carpet, carpet, carpet]);
   const rug = mat('#ffffff', { map: T.floorRug(), roughness: 0.95 });
-  add(new THREE.BoxGeometry(2.0, 0.008, 1.25).translate(2.0, 0.004, 1.7), rug);
+  add(new THREE.BoxGeometry(2.0, 0.008, 1.3).translate(2.25, 0.004, 1.6), rug);
 
   // light, as in the living room: the warm lamp (9 × lampPower 1.6), the night fill, the moon
   const lamp = new THREE.PointLight('#ffd7a0', 9 * 1.6, 0, 1.6);
@@ -132,6 +133,102 @@ function buildRoom() {
   moon.position.set(-8, 10, 0.5);
   moon.target.position.set(2, 0, 1.8);
   scene.add(moon, moon.target);
+}
+
+// a cast-iron МС-140 under the window: sections of two rounded columns with a slit between them, and
+// the riser pipe going through the floor and the ceiling, the radiator hung on it by two stubs
+function buildRadiator() {
+  const parts = [];
+  const n = 8, pitch = 0.093, y0 = 0.14, h = 0.56, x0 = 0.045, x1 = 0.165;
+  const z0 = (WIN.z0 + WIN.z1) / 2 - (n * pitch) / 2;
+  for (let i = 0; i < n; i++) {
+    const zc = z0 + (i + 0.5) * pitch;
+    for (const xc of [x0 + 0.024, x1 - 0.024]) parts.push(new RoundedBoxGeometry(0.048, h, 0.082, 3, 0.02).translate(xc, y0 + h / 2, zc));
+    parts.push(new THREE.BoxGeometry(x1 - x0 - 0.06, h - 0.08, 0.03).translate((x0 + x1) / 2, y0 + h / 2, zc));
+  }
+  const pipe = (len, r = 0.016) => new THREE.CylinderGeometry(r, r, len, 12);
+  const zr = z0 - 0.09; // the riser, between the radiator and the corner
+  parts.push(pipe(H).translate(0.07, H / 2, zr));
+  for (const y of [y0 + 0.06, y0 + h - 0.06]) parts.push(pipe(0.1, 0.013).rotateX(Math.PI / 2).translate(0.07, y, zr + 0.05));
+  add(mergeGeometries(parts), mat('#e9e4d6', { roughness: 0.45 }));
+}
+
+// a canvas texture: draw(g, w, h) on a w x h canvas, tiled
+function canvasTex(w, h, draw) {
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  draw(c.getContext('2d'), w, h);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.anisotropy = 4;
+  return t;
+}
+
+// a hanging cloth along z (from za to zb), from y0 up to y1, at x, gathered into folds
+function cloth(za, zb, y0, y1, x, fold, depth, m) {
+  const geo = new THREE.PlaneGeometry(zb - za, y1 - y0, Math.ceil(((zb - za) / fold) * 8), 1).rotateY(Math.PI / 2);
+  const p = geo.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const z = p.getZ(i) + (za + zb) / 2;
+    p.setXYZ(i, x + depth * Math.sin((z * 2 * Math.PI) / fold), p.getY(i) + (y0 + y1) / 2, z);
+  }
+  geo.computeVertexNormals();
+  return add(geo, m);
+}
+
+// the window dressed as in every Soviet flat: a rod, golden-brown jacquard drapes pulled to the sides,
+// and the тюль, a sheer white lace over the whole window
+function buildCurtains() {
+  const rodY = 2.44;
+  add(new THREE.CylinderGeometry(0.012, 0.012, WIN.z1 - WIN.z0 + 0.8, 10).rotateX(Math.PI / 2).translate(0.12, rodY, (WIN.z0 + WIN.z1) / 2), mat('#8a6a3c', { roughness: 0.4, metalness: 0.5 }));
+  for (const z of [WIN.z0 - 0.4, WIN.z1 + 0.4]) add(new THREE.BoxGeometry(0.12, 0.03, 0.03).translate(0.06, rodY + 0.02, z + (z < WIN.z0 ? 0.02 : -0.02)), mat('#6b5030', { roughness: 0.5 }));
+  const jacquard = canvasTex(128, 256, (g, w, h) => {
+    g.fillStyle = '#7d5a2c';
+    g.fillRect(0, 0, w, h);
+    g.fillStyle = '#9a7840';
+    for (const [cx, cy] of [[w / 2, h / 4], [0, (3 * h) / 4], [w, (3 * h) / 4]]) {
+      g.beginPath();
+      g.ellipse(cx, cy, w * 0.22, h * 0.17, 0, 0, Math.PI * 2);
+      g.fill();
+    }
+    g.fillStyle = '#6a4a22';
+    for (const [cx, cy] of [[w / 2, h / 4], [0, (3 * h) / 4], [w, (3 * h) / 4]]) {
+      g.beginPath();
+      g.ellipse(cx, cy, w * 0.1, h * 0.08, 0, 0, Math.PI * 2);
+      g.fill();
+    }
+  });
+  jacquard.repeat.set(1, 1);
+  const drape = mat('#ffffff', { map: jacquard, roughness: 0.9, side: THREE.DoubleSide });
+  for (const [za, zb] of [[WIN.z0 - 0.36, WIN.z0 + 0.08], [WIN.z1 - 0.08, WIN.z1 + 0.32]]) {
+    const geo = cloth(za, zb, 0.05, rodY - 0.02, 0.135, 0.11, 0.022, drape).geometry;
+    const uv = geo.attributes.uv;
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, (uv.getX(i) * (zb - za)) / 0.22, (uv.getY(i) * (rodY - 0.07)) / 0.45);
+  }
+  const lace = canvasTex(256, 256, (g, w, h) => {
+    g.fillStyle = 'rgba(255,255,255,0.30)';
+    g.fillRect(0, 0, w, h);
+    g.strokeStyle = 'rgba(255,255,255,0.55)';
+    g.lineWidth = 3;
+    for (const [cx, cy] of [[w / 2, h / 2], [0, 0], [w, 0], [0, h], [w, h]]) {
+      for (let k = 0; k < 6; k++) {
+        const a = (k * Math.PI) / 3;
+        g.beginPath();
+        g.ellipse(cx + Math.cos(a) * 26, cy + Math.sin(a) * 26, 20, 9, a, 0, Math.PI * 2);
+        g.stroke();
+      }
+      g.beginPath();
+      g.arc(cx, cy, 8, 0, Math.PI * 2);
+      g.stroke();
+    }
+  });
+  const tulle = new THREE.MeshStandardMaterial({ map: lace, transparent: true, roughness: 1, side: THREE.DoubleSide, depthWrite: false });
+  const top = rodY - 0.02, bottom = WIN.y0 + 0.06;
+  const geo = cloth(WIN.z0 - 0.08, WIN.z1 + 0.08, bottom, top, 0.1, 0.09, 0.01, tulle).geometry;
+  const uv = geo.attributes.uv;
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, (uv.getX(i) * (WIN.z1 - WIN.z0 + 0.16)) / 0.3, (uv.getY(i) * (top - bottom)) / 0.3);
 }
 
 // ---------- loading
@@ -148,13 +245,15 @@ async function exists(url) {
 
 // the base kit: [w, d, h] as the kit builds it (origin at the bottom centre, front toward +z),
 // where its bottom centre stands in the room and the way its front faces (yaw: front = (sin, cos))
+// Back wall from the corner: the fridge (on the left wall, its side to the стенка), the стенка, the
+// armchair, the TV turned a little toward the room, the plant. Left wall: fridge, window, stove.
 const KIT_ITEMS = {
-  stenka: { size: [1.0, 0.45, 2.1], at: [0.53, 0.26], yaw: 0 },
-  armchair: { size: [0.72, 0.8, 0.85], at: [1.48, 0.44], yaw: 0.08 },
-  tv: { size: [0.7, 0.5, 1.0], at: [2.5, 0.32], yaw: 0.15 },
-  fridge: { size: [0.6, 0.6, 1.5], at: [0.33, 0.92], yaw: Math.PI / 2 },
-  stove: { size: [0.5, 0.6, 0.85], at: [0.33, 2.62], yaw: Math.PI / 2 },
-  stool: { size: [0.32, 0.32, 0.45], at: [0.64, 1.86], yaw: Math.PI / 2 + 0.35 },
+  fridge: { size: [0.6, 0.68, 1.5], at: [0.35, 0.33], yaw: Math.PI / 2 },
+  stenka: { size: [1.0, 0.49, 2.1], at: [1.28, 0.27], yaw: 0 },
+  armchair: { size: [0.73, 0.85, 0.85], at: [2.24, 0.45], yaw: 0.1 },
+  tv: { size: [0.7, 0.55, 0.95], at: [3.03, 0.33], yaw: -0.22 },
+  stove: { size: [0.5, 0.68, 0.85], at: [0.35, 2.6], yaw: Math.PI / 2 },
+  stool: { size: [0.33, 0.33, 0.45], at: [0.66, 1.5], yaw: Math.PI / 2 + 0.35 },
 };
 
 // grey stand-ins of the right size while the kit isn't built (an armchair you can sit in, a TV with a screen side)
@@ -223,7 +322,7 @@ function put(obj, [x, z], yaw = 0, y = 0) {
   obj.rotation.y = yaw;
   room.add(obj);
   obj.updateMatrixWorld(true);
-  const b = new THREE.Box3().setFromObject(obj), gap = 0.025;
+  const b = new THREE.Box3().setFromObject(obj, true), gap = 0.025; // precise: the kit has tilted parts (legs)
   obj.position.x += Math.max(0, gap - b.min.x) - Math.max(0, b.max.x - (W - gap));
   obj.position.z += Math.max(0, gap - b.min.z) - Math.max(0, b.max.z - (D - gap));
   obj.updateMatrixWorld(true);
@@ -247,6 +346,33 @@ function backAt(obj, ly) {
   ray.set(from, dir);
   const hit = ray.intersectObject(obj, true)[0];
   return hit ? obj.worldToLocal(hit.point.clone()).z : null;
+}
+
+// A reflection probe. The game has no environment map, so chrome, gilt and glass from the kit (metallic,
+// no textures) would show nothing but the lamp's highlight and render black. One snapshot of the room
+// from its middle (furniture, lamp and window in it, the guys not yet), filtered by roughness (PMREM),
+// becomes the envMap of the metal, glass and screen materials of the kit and the props. A style can
+// drop it (material.envMap = null) or swap it; window.__showroom.probe is the texture.
+let probe = null;
+function reflect(objects) {
+  const target = new THREE.WebGLCubeRenderTarget(256, { type: THREE.HalfFloatType });
+  const cube = new THREE.CubeCamera(0.05, 50, target);
+  cube.position.set(W / 2, 1.25, 1.4);
+  scene.add(cube);
+  cube.update(renderer, scene);
+  scene.remove(cube);
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  probe = pmrem.fromCubemap(target.texture).texture;
+  pmrem.dispose();
+  target.dispose();
+  for (const obj of objects)
+    obj.traverse((o) => {
+      for (const m of o.isMesh ? [o.material].flat() : []) {
+        if (!m.isMeshStandardMaterial || !(m.metalness > 0.4 || m.transparent || /screen|chrome|glass|crystal/i.test(m.name))) continue;
+        m.envMap = probe;
+        m.needsUpdate = true;
+      }
+    });
 }
 
 // run a figure's animation for a while so it settles into its pose (then it stays frozen)
@@ -274,11 +400,11 @@ async function build() {
     m.rotation.y = base.rotation.y + turn;
     room.add(m);
   };
-  on(props.vintage_electric_kettle, stove, 0.11, -0.1, 0.6);
+  on(props.vintage_electric_kettle, stove, 0.1, -0.1, 0.6);
   on(props.cardboard_box_01, stenka, 0.12, 0.02, 0.15);
-  on(props.russian_food_cans_01, stool, -0.06, 0.06, 0.4);
-  on(makeBottle('vodka'), stool, 0.08, -0.07);
-  put(props.potted_plant_01, [3.33, 0.36], 0.5);
+  on(props.russian_food_cans_01, stool, -0.07, 0.07, 0.4);
+  on(makeBottle('vodka'), stool, 0.08, -0.08);
+  put(props.potted_plant_01, [3.66, 0.4], 0.5);
   // the chandelier, lit from the inside like in furniture.js: shades glow in their own colour, bulbs shine
   const ch = props.Chandelier_02;
   ch.position.set(LAMP[0], H, LAMP[1]);
@@ -297,6 +423,7 @@ async function build() {
     }
   });
   room.add(ch);
+  reflect([...Object.values(items), ...Object.values(props)]);
 
   // the guys, made the way friends.js makes them (no name tags), posed and then frozen. Reseeded first:
   // what was built before them (a kit variant has other objects, and every object takes a random id)
@@ -304,8 +431,8 @@ async function build() {
   reseed();
   const person = (id) => makePerson({ ...CHARS[id], style: 'sprite', faceId: id, label: false });
   const lyokha = person('lyokha');
-  lyokha.root.position.set(1.14, 0, 1.36);
-  lyokha.root.rotation.y = 0.8;
+  lyokha.root.position.set(1.6, 0, 1.42);
+  lyokha.root.rotation.y = 0.9;
   room.add(lyokha.root);
   lyokha.setPose('stand');
   settle(lyokha, 2);
@@ -334,6 +461,12 @@ async function build() {
   settle(kirill, 2);
   kirill.rig.spine.rotation.x -= 0.14; // slouching back into the armchair
   kirill.rig.neck.rotation.x += 0.1;
+  // forearms on the armrests
+  for (const [i, arm] of kirill.rig.arms.entries()) {
+    const s = i ? 1 : -1; // anim.js SIDES: arms[0] is the right arm
+    arm.shoulder.quaternion.setFromEuler(new THREE.Euler(-0.25, 0, s * 0.28));
+    arm.elbow.rotation.x = -1.2;
+  }
 
   // the cat on the warm TV, of course
   const cat = makeCat({ label: false });
@@ -349,14 +482,14 @@ async function build() {
       return img.decode().catch(() => {});
     }),
   ]);
-  window.__showroom = { THREE, scene, camera, renderer, fx, items, props, lyokha, kirill, cat, seat: { y: seat, backs, front, pelvisZ } };
+  window.__showroom = { THREE, scene, camera, renderer, fx, items, props, probe, lyokha, kirill, cat, seat: { y: seat, backs, front, pelvisZ } };
 }
 
 // ---------- views
 const VIEWS = {
-  1: { pos: [3.3, 1.6, 2.85], at: [1.25, 0.95, 0.85], fov: 75 }, // the whole corner
-  2: { pos: [2.7, 1.4, 2.25], at: [1.72, 0.95, 0.6], fov: 70 }, // armchair, TV, the guys
-  3: { pos: [1.45, 1.6, 2.92], at: [0.15, 0.85, 1.75], fov: 80 }, // the kitchen side
+  1: { pos: [3.7, 1.6, 2.85], at: [1.55, 0.95, 0.85], fov: 75 }, // the whole corner
+  2: { pos: [3.15, 1.4, 2.3], at: [2.15, 0.95, 0.6], fov: 70 }, // armchair, TV, the guys
+  3: { pos: [1.85, 1.6, 2.92], at: [0.2, 0.85, 1.5], fov: 70 }, // the kitchen side
 };
 function setView(n) {
   const v = VIEWS[n] ?? VIEWS[1];
