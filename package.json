@@ -10,7 +10,8 @@
     "plan": "node scripts/plan.mjs",
     "shots": "node scripts/shots.mjs",
     "assets": "NODE_USE_ENV_PROXY=1 node scripts/assets/build.mjs",
-    "robot": "node scripts/robot-lab.mjs"
+    "robot": "node scripts/robot-lab.mjs",
+    "style-kit": "node scripts/assets/styles/run.mjs"
   },
   "dependencies": {
     "cannon-es": "^0.20.0",
