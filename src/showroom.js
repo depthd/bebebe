@@ -48,9 +48,9 @@ orbit.enabled = false;
 
 // ---------- the room: x along the back wall (0..W), z from the back wall into the room (0..D), y up.
 // The corner is the back wall (z = 0) and the left wall (x = 0); the other two walls are there so no
-// view ever sees past the edge. 4 m wide: the fridge in the corner, the стенка, the armchair, the TV
-// and the plant stand side by side along the back wall without touching.
-const W = 4.0, D = 3.0, H = 2.6, TH = 0.12;
+// view ever sees past the edge. 4.5 m wide: the fridge in the corner, the стенка, the armchair, room
+// for Лёха to stand, the TV and the plant along the back wall, nothing touching.
+const W = 4.5, D = 3.0, H = 2.6, TH = 0.12;
 const WIN = { z0: 1.0, z1: 2.0, y0: 0.9, y1: 2.3 }; // the window in the left wall
 const LAMP = [W / 2, 1.45];
 const room = new THREE.Group();
@@ -117,9 +117,9 @@ function buildRoom() {
 
   // the legendary wall carpet over the armchair and the TV, a rug on the floor
   const carpet = mat('#ffffff', { map: T.wallCarpet(), roughness: 0.95 });
-  add(new THREE.BoxGeometry(1.6, 1.0, 0.012).translate(2.6, 1.68, 0.012), [carpet, carpet, carpet, carpet, carpet, carpet]);
+  add(new THREE.BoxGeometry(1.6, 1.0, 0.012).translate(2.9, 1.68, 0.012), [carpet, carpet, carpet, carpet, carpet, carpet]);
   const rug = mat('#ffffff', { map: T.floorRug(), roughness: 0.95 });
-  add(new THREE.BoxGeometry(2.0, 0.008, 1.3).translate(2.25, 0.004, 1.6), rug);
+  add(new THREE.BoxGeometry(2.0, 0.008, 1.3).translate(2.45, 0.004, 1.65), rug);
 
   // light, as in the living room: the warm lamp (9 × lampPower 1.6), the night fill, the moon
   const lamp = new THREE.PointLight('#ffd7a0', 9 * 1.6, 0, 1.6);
@@ -147,10 +147,10 @@ function buildRadiator() {
     parts.push(new THREE.BoxGeometry(x1 - x0 - 0.06, h - 0.08, 0.03).translate((x0 + x1) / 2, y0 + h / 2, zc));
   }
   const pipe = (len, r = 0.016) => new THREE.CylinderGeometry(r, r, len, 12);
-  const zr = z0 - 0.09; // the riser, between the radiator and the corner
+  const zr = z0 + n * pitch + 0.055; // the riser, at the stove end
   parts.push(pipe(H).translate(0.07, H / 2, zr));
-  for (const y of [y0 + 0.06, y0 + h - 0.06]) parts.push(pipe(0.1, 0.013).rotateX(Math.PI / 2).translate(0.07, y, zr + 0.05));
-  add(mergeGeometries(parts), mat('#e9e4d6', { roughness: 0.45 }));
+  for (const y of [y0 + 0.06, y0 + h - 0.06]) parts.push(pipe(0.1, 0.013).rotateX(Math.PI / 2).translate(0.07, y, zr - 0.05));
+  add(mergeGeometries(parts.map((g) => (g.index ? g.toNonIndexed() : g))), mat('#e9e4d6', { roughness: 0.45 }));
 }
 
 // a canvas texture: draw(g, w, h) on a w x h canvas, tiled
@@ -184,25 +184,33 @@ function buildCurtains() {
   const rodY = 2.44;
   add(new THREE.CylinderGeometry(0.012, 0.012, WIN.z1 - WIN.z0 + 0.8, 10).rotateX(Math.PI / 2).translate(0.12, rodY, (WIN.z0 + WIN.z1) / 2), mat('#8a6a3c', { roughness: 0.4, metalness: 0.5 }));
   for (const z of [WIN.z0 - 0.4, WIN.z1 + 0.4]) add(new THREE.BoxGeometry(0.12, 0.03, 0.03).translate(0.06, rodY + 0.02, z + (z < WIN.z0 ? 0.02 : -0.02)), mat('#6b5030', { roughness: 0.5 }));
+  // tone-on-tone damask: pointed ovals with a leaf inside, offset every other row
   const jacquard = canvasTex(128, 256, (g, w, h) => {
-    g.fillStyle = '#7d5a2c';
+    g.fillStyle = '#7a5528';
     g.fillRect(0, 0, w, h);
-    g.fillStyle = '#9a7840';
-    for (const [cx, cy] of [[w / 2, h / 4], [0, (3 * h) / 4], [w, (3 * h) / 4]]) {
-      g.beginPath();
-      g.ellipse(cx, cy, w * 0.22, h * 0.17, 0, 0, Math.PI * 2);
-      g.fill();
+    for (let x = 0; x < w; x += 4) {
+      g.fillStyle = x % 8 ? 'rgba(0,0,0,0.05)' : 'rgba(255,230,180,0.04)';
+      g.fillRect(x, 0, 2, h);
     }
-    g.fillStyle = '#6a4a22';
-    for (const [cx, cy] of [[w / 2, h / 4], [0, (3 * h) / 4], [w, (3 * h) / 4]]) {
+    const motif = (cx, cy) => {
+      g.fillStyle = 'rgba(255,214,150,0.16)';
       g.beginPath();
-      g.ellipse(cx, cy, w * 0.1, h * 0.08, 0, 0, Math.PI * 2);
+      g.moveTo(cx, cy - h * 0.2);
+      g.quadraticCurveTo(cx + w * 0.3, cy, cx, cy + h * 0.2);
+      g.quadraticCurveTo(cx - w * 0.3, cy, cx, cy - h * 0.2);
       g.fill();
-    }
+      g.fillStyle = 'rgba(60,30,5,0.18)';
+      g.beginPath();
+      g.moveTo(cx, cy - h * 0.09);
+      g.quadraticCurveTo(cx + w * 0.11, cy, cx, cy + h * 0.09);
+      g.quadraticCurveTo(cx - w * 0.11, cy, cx, cy - h * 0.09);
+      g.fill();
+    };
+    for (const [cx, cy] of [[w / 2, h / 4], [0, (3 * h) / 4], [w, (3 * h) / 4]]) motif(cx, cy);
   });
   jacquard.repeat.set(1, 1);
   const drape = mat('#ffffff', { map: jacquard, roughness: 0.9, side: THREE.DoubleSide });
-  for (const [za, zb] of [[WIN.z0 - 0.36, WIN.z0 + 0.08], [WIN.z1 - 0.08, WIN.z1 + 0.32]]) {
+  for (const [za, zb] of [[WIN.z0 - 0.36, WIN.z0 + 0.04], [WIN.z1 + 0.0, WIN.z1 + 0.32]]) {
     const geo = cloth(za, zb, 0.05, rodY - 0.02, 0.135, 0.11, 0.022, drape).geometry;
     const uv = geo.attributes.uv;
     for (let i = 0; i < uv.count; i++) uv.setXY(i, (uv.getX(i) * (zb - za)) / 0.22, (uv.getY(i) * (rodY - 0.07)) / 0.45);
@@ -250,8 +258,8 @@ async function exists(url) {
 const KIT_ITEMS = {
   fridge: { size: [0.6, 0.68, 1.5], at: [0.35, 0.33], yaw: Math.PI / 2 },
   stenka: { size: [1.0, 0.49, 2.1], at: [1.28, 0.27], yaw: 0 },
-  armchair: { size: [0.73, 0.85, 0.85], at: [2.24, 0.45], yaw: 0.1 },
-  tv: { size: [0.7, 0.55, 0.95], at: [3.03, 0.33], yaw: -0.22 },
+  armchair: { size: [0.73, 0.85, 0.85], at: [2.2, 0.45], yaw: 0.12 },
+  tv: { size: [0.7, 0.55, 0.95], at: [3.63, 0.33], yaw: -0.2 },
   stove: { size: [0.5, 0.68, 0.85], at: [0.35, 2.6], yaw: Math.PI / 2 },
   stool: { size: [0.33, 0.33, 0.45], at: [0.66, 1.5], yaw: Math.PI / 2 + 0.35 },
 };
@@ -404,7 +412,7 @@ async function build() {
   on(props.cardboard_box_01, stenka, 0.12, 0.02, 0.15);
   on(props.russian_food_cans_01, stool, -0.07, 0.07, 0.4);
   on(makeBottle('vodka'), stool, 0.08, -0.08);
-  put(props.potted_plant_01, [3.66, 0.4], 0.5);
+  put(props.potted_plant_01, [4.2, 0.42], 0.5);
   // the chandelier, lit from the inside like in furniture.js: shades glow in their own colour, bulbs shine
   const ch = props.Chandelier_02;
   ch.position.set(LAMP[0], H, LAMP[1]);
@@ -431,8 +439,8 @@ async function build() {
   reseed();
   const person = (id) => makePerson({ ...CHARS[id], style: 'sprite', faceId: id, label: false });
   const lyokha = person('lyokha');
-  lyokha.root.position.set(1.6, 0, 1.42);
-  lyokha.root.rotation.y = 0.9;
+  lyokha.root.position.set(2.92, 0, 0.62);
+  lyokha.root.rotation.y = 0.35;
   room.add(lyokha.root);
   lyokha.setPose('stand');
   settle(lyokha, 2);
@@ -487,8 +495,8 @@ async function build() {
 
 // ---------- views
 const VIEWS = {
-  1: { pos: [3.7, 1.6, 2.85], at: [1.55, 0.95, 0.85], fov: 75 }, // the whole corner
-  2: { pos: [3.15, 1.4, 2.3], at: [2.15, 0.95, 0.6], fov: 70 }, // armchair, TV, the guys
+  1: { pos: [4.25, 1.6, 2.9], at: [2.51, 0.95, 0.83], fov: 75 }, // the whole corner
+  2: { pos: [2.9, 1.45, 2.6], at: [2.9, 0.95, 0.4], fov: 65 }, // armchair, TV, the guys
   3: { pos: [1.85, 1.6, 2.92], at: [0.2, 0.85, 1.5], fov: 70 }, // the kitchen side
 };
 function setView(n) {
