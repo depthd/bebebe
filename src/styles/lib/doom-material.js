@@ -4,6 +4,7 @@
 // things that must stay visible, and the emissive colour added unlit. No per-pixel lights at all.
 // Optional `wobble` (the PS1 flavour): vertex snapping and affine texture mapping.
 import * as THREE from 'three';
+import { DYN, SIZE } from './doom-sector.js';
 
 const VERT_HEAD = /* glsl */ `
 varying vec3 vDoomWP;
@@ -37,25 +38,44 @@ const VERT_BODY = /* glsl */ `
 `;
 
 export const LIGHT_GLSL = /* glsl */ `
+#define DOOM_DYN ${DYN}
+#define DOOM_MAP ${SIZE}.0
 uniform sampler2D uDoomSector;
 uniform vec4 uDoomRect;   // x0, z0, 1/span, split y
 uniform vec2 uDoomBand;   // distance where the dimming starts and where it is full
 uniform float uDoomFloor; // fullbright floor (display space)
+uniform vec4 uDoomDynP[DOOM_DYN]; // fire / grill: x, z, radius, layer (1 flat, 0 street, -1 off)
+uniform vec4 uDoomDynC[DOOM_DYN]; // display rgb x strength, strength
 varying vec3 vDoomWP;
 varying vec3 vDoomWN;
 vec3 doomLight() {
   vec3 n = normalize(vDoomWN);
   if (!gl_FrontFacing) n = -n;
   // each face takes the light of the room it faces: sample a little in front of it
-  vec2 st = clamp((vDoomWP.xz + n.xz * 0.1 - uDoomRect.xy) * uDoomRect.z, 0.0005, 0.9995);
-  st.y = st.y * 0.5 + (vDoomWP.y < uDoomRect.w ? 0.0 : 0.5);
+  vec2 at = vDoomWP.xz + n.xz * 0.1;
+  vec2 st = clamp((at - uDoomRect.xy) * uDoomRect.z, 0.0005, 0.9995);
+  float layer = vDoomWP.y < uDoomRect.w ? 0.0 : 1.0;
+  st.y = st.y * 0.5 + layer * 0.5;
   vec4 sec = texture2D(uDoomSector, st);
+  // fire and grill light: discs on the map's texel grid
+  float cell = 1.0 / (uDoomRect.z * DOOM_MAP);
+  vec2 snapped = (floor((at - uDoomRect.xy) / cell) + 0.5) * cell + uDoomRect.xy;
+  for (int i = 0; i < DOOM_DYN; i++) {
+    vec4 p = uDoomDynP[i];
+    if (p.w != layer) continue;
+    float f = pow(max(0.0, 1.0 - distance(snapped, p.xy) / p.z), 1.5);
+    sec.rgb = min(sec.rgb + uDoomDynC[i].rgb * f, vec3(1.0));
+    sec.a = min(1.0, sec.a + uDoomDynC[i].a * f * 0.8);
+  }
   float d = distance(cameraPosition, vDoomWP);
   float band = 1.0 - smoothstep(uDoomBand.x, uDoomBand.y, d) * (1.0 - 0.7 * sec.a);
-  vec3 L = sec.rgb * band;
-  L *= 1.0 - 0.12 * abs(n.x); // Doom's fake contrast: walls one way a shade darker
-  if (abs(n.y) > 0.5) L *= 0.9; // floors and ceilings
-  L = floor(L * 31.99) / 31.0; // 32 light levels: darkness comes in bands
+  float k = band;
+  k *= 1.0 - 0.12 * abs(n.x); // Doom's fake contrast: walls one way a shade darker
+  if (abs(n.y) > 0.5) k *= 0.9; // floors and ceilings
+  // 32 light levels: darkness comes in bands. The level is quantised, not each channel, so a surface
+  // keeps its hue from band to band (the sector's colour is sec.rgb / sec.a)
+  float lv = floor(sec.a * k * 31.99) / 31.0;
+  vec3 L = sec.rgb * (lv / max(sec.a, 0.004));
   L = max(L, vec3(uDoomFloor));
   return pow(L, vec3(2.2)); // display-space light -> linear
 }

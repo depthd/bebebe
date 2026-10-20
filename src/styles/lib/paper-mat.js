@@ -103,7 +103,7 @@ const FRAG_MAIN = /* glsl */ `
     float ao = texture2D( uPaperAO, ( q - uPaperAOBox.xy ) * uPaperAOBox.zw ).r;
     float kFloor = smoothstep( 0.6, 0.8, pN.y ) * ( 1.0 - smoothstep( 0.025, 0.06, abs( vPw.y ) ) );
     float kWall = vert * ( 1.0 - smoothstep( 0.0, 0.45, vPw.y ) ) * step( -0.02, vPw.y );
-    diffuseColor.rgb *= mix( 1.0, mix( 0.55, 1.0, ao ), max( kFloor, kWall ) );
+    diffuseColor.rgb *= mix( 1.0, mix( 0.38, 1.0, ao ), max( kFloor, kWall ) );
   }
   #endif
   #ifdef PAPER_SEAMS
@@ -150,7 +150,7 @@ export function createPaperMaterials({ grain, ao = null, aoBox = null, ceil = 2.
     uPaperGrainAmt: { value: 1.7 },
     uPaperInk: { value: lin('#2b1d14') },
     uPaperWhite: { value: lin('#f3ecdc') },
-    uPaperLine: { value: new THREE.Vector3(1.2, 3.0, 1.5) },
+    uPaperLine: { value: new THREE.Vector3(1.7, 3.4, 1.5) },
     uPaperAO: { value: ao },
     uPaperAOBox: { value: aoBox ?? new THREE.Vector4() },
     uPaperCeil: { value: ceil },
@@ -232,9 +232,17 @@ export function cellophane(m, { rim = false } = {}) {
           float e = ( 1.0 - rr ) / max( fwidth( rr ), 1e-5 );
           float ink = 1.0 - smoothstep( 0.9, 1.9, e );
           float cut = 1.0 - smoothstep( 3.0, 4.2, e );
+          // no environment to reflect: the gloss is painted, a white highlight stroke and a dot
+          vec2 q = vUv - 0.5;
+          float ang = atan( q.y, q.x );
+          float band = 1.0 - smoothstep( 0.025, 0.045, abs( rr - 0.66 ) );
+          float arc = band * smoothstep( 1.75, 1.95, ang ) * ( 1.0 - smoothstep( 2.55, 2.75, ang ) );
+          float spot = 1.0 - smoothstep( 0.03, 0.045, length( q - vec2( -0.08, 0.3 ) ) );
+          float gloss = max( arc, spot ) * ( 1.0 - cut );
+          diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 1.0 ), gloss * 0.8 );
           diffuseColor.rgb = mix( diffuseColor.rgb, uPaperWhite, cut );
           diffuseColor.rgb = mix( diffuseColor.rgb, uPaperInk, ink * 0.85 );
-          diffuseColor.a = max( diffuseColor.a, cut * 0.95 );
+          diffuseColor.a = max( diffuseColor.a, max( cut * 0.95, gloss * 0.9 ) );
         }`,
       );
     };

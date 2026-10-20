@@ -11,6 +11,7 @@ import { ROOMS, roomAt, planToWorld } from '../../world/layout.js';
 export const SIZE = 512; // texels per side of one layer
 export const SPAN = 40; // metres per side
 export const SPLIT_Y = -1.5; // below: the street-level layer
+export const DYN = 4; // fire / grill lights the shader takes
 
 // [level, colour] per sector; colours are mixed towards white by TINT in the map
 export const SECTORS = {
@@ -21,7 +22,7 @@ export const SECTORS = {
   hall: [0.6, '#ffd7a0'],
   balcony: [0.45, '#ffd7a0'],
   stairwell: [0.35, '#cfe8c8'],
-  yard: [0.22, '#8090c0'],
+  yard: [0.3, '#8090c0'],
   kiosk: [0.95, '#f4f8ff'],
   room: [0.9, '#ffd7a0'], // the showroom: one lit room everywhere
 };
@@ -96,11 +97,17 @@ export function createSector({ apt, outside, game, tint = 0.6 } = {}) {
   const lampK = Object.fromEntries(ids.map((id) => [id, 1]));
 
   // ---- static light pools baked into the street layer: the yard's lamp posts
+  // (and a cold pool in front of the kiosk: its light spills out of the door)
   const pools = [];
   if (flat) {
+    const wp0 = new THREE.Vector3();
+    outside.group.updateMatrixWorld(true);
     outside.group.traverse((o) => {
-      if (!o.isPointLight || o.position.y > -1 || o.color.getHexString() !== 'ffb866') return;
-      pools.push({ x: o.position.x, z: o.position.z, r: 4.5, c: [1.0, 0.78, 0.5], k: 0.5 });
+      if (!o.isPointLight) return;
+      const hex = o.color.getHexString();
+      o.getWorldPosition(wp0);
+      if (hex === 'ffb866') pools.push({ x: wp0.x, z: wp0.z, r: 6.5, c: [1.0, 0.8, 0.55], k: 0.9 });
+      else if (hex === 'f4f8ff') pools.push({ x: wp0.x, z: wp0.z, r: 5.5, c: [0.85, 0.95, 0.9], k: 0.6 });
     });
   }
 
@@ -156,38 +163,50 @@ export function createSector({ apt, outside, game, tint = 0.6 } = {}) {
     uDoomRect: { value: new THREE.Vector4(x0, z0, 1 / SPAN, SPLIT_Y) },
   };
 
-  // dynamic lights (fire, grill): non-pooled point lights under game.dynamic with intensity > 0
-  const dynLights = () => {
-    const out = [];
-    game?.dynamic?.traverse((o) => {
-      if (o.isPointLight && !o.userData.pooled && o.intensity > 0) out.push(o);
-    });
-    return out;
+  // dynamic lights (fire, grill): non-pooled point lights under game.dynamic with intensity > 0. They
+  // are not painted into the map (re-uploading the touched rows every frame with texSubImage2D update
+  // ranges corrupted the map in Chromium): up to DYN of them go to the shader as uniforms and light a
+  // disc there, snapped to the map's texels so the pool is as blocky as the rest of the light.
+  const dynP = Array.from({ length: DYN }, () => new THREE.Vector4()); // x, z, radius, layer (1 flat, 0 street)
+  const dynC = Array.from({ length: DYN }, () => new THREE.Vector4()); // display rgb x strength, strength
+  uniforms.uDoomDynP = { value: dynP };
+  uniforms.uDoomDynC = { value: dynC };
+  let dyn = [], scanIn = 0;
+  const scanDyn = () => {
+    dyn = [];
+    game?.dynamic?.traverse((o) => o.isPointLight && !o.userData.pooled && dyn.push(o));
   };
-  let lastRect = null;
-  const wp = new THREE.Vector3();
-  const work = new Float32Array(base.length); // scratch: base + discs in the touched rect
-  const union = (a, b) => (!a ? b : !b ? a : { i0: Math.min(a.i0, b.i0), i1: Math.max(a.i1, b.i1), j0: Math.min(a.j0, b.j0), j1: Math.max(a.j1, b.j1) });
-
-  function upload(rect) {
-    for (let j = rect.j0; j <= rect.j1; j++) texture.addUpdateRange((j * W + rect.i0) * 4, (rect.i1 - rect.i0 + 1) * 4);
-    texture.needsUpdate = true;
-  }
+  const wp = new THREE.Vector3(), lc = new THREE.Color();
+  let dynN = 0;
+  const snapC = (v, o) => (Math.floor((v - o) / cell) + 0.5) * cell + o;
 
   return {
     texture,
     uniforms,
     ids,
+    lampK, // (for debugging) how bright each sector's lamp is now, 1 = as at load
+    lamps: lampOf,
     // light at a world point, in display space: [r, g, b, level] (0..1)
     sample(x, y, z, out = [0, 0, 0, 0]) {
       const i = Math.min(W - 1, Math.max(0, Math.floor((x - x0) / cell)));
       const j = Math.min(SIZE - 1, Math.max(0, Math.floor((z - z0) / cell))) + (y < SPLIT_Y ? 0 : SIZE);
       const k = (j * W + i) * 4;
       for (let c = 0; c < 4; c++) out[c] = data[k + c] / 255;
+      const layer = y < SPLIT_Y ? 0 : 1, sx = snapC(x, x0), sz = snapC(z, z0);
+      for (let n = 0; n < dynN; n++) {
+        const p = dynP[n], c = dynC[n];
+        if (p.w !== layer) continue;
+        const f = Math.max(0, 1 - Math.hypot(sx - p.x, sz - p.y) / p.z) ** 1.5;
+        if (!f) continue;
+        out[0] = Math.min(1, out[0] + c.x * f);
+        out[1] = Math.min(1, out[1] + c.y * f);
+        out[2] = Math.min(1, out[2] + c.z * f);
+        out[3] = Math.min(1, out[3] + c.w * f * 0.8);
+      }
       return out;
     },
-    update() {
-      // room lamps: rebuild a sector when its lamp changed
+    update(dt = 0) {
+      // room lamps: rebuild the map when a lamp changed (a whole upload: it's rare)
       let changed = false;
       for (const [id, [l, i0]] of Object.entries(lampOf)) {
         const k = i0 > 0 ? Math.max(0, Math.min(1.5, l.intensity / i0)) : 1;
@@ -201,31 +220,27 @@ export function createSector({ apt, outside, game, tint = 0.6 } = {}) {
         for (const p of pools) disc(base, p, 0);
         for (let k = 0; k < W * Hh; k++) toBytes(k, base);
         texture.needsUpdate = true;
-        lastRect = null;
-        return;
       }
-      // fire and grill: warm discs over the base, only where they are (and were)
-      const lights = dynLights();
-      let rect = null;
-      const discs = lights.map((l) => {
+      // fire and grill: the brightest DYN lights to the shader
+      if ((scanIn -= dt) <= 0) {
+        scanIn = 0.5;
+        scanDyn();
+      }
+      const lit = dyn.filter((l) => l.intensity > 0 && l.parent).sort((a, b) => b.intensity - a.intensity).slice(0, DYN);
+      dynN = lit.length;
+      for (let n = 0; n < DYN; n++) {
+        const l = lit[n];
+        if (!l) {
+          dynP[n].set(0, 0, 0, -1);
+          dynC[n].set(0, 0, 0, 0);
+          continue;
+        }
         l.getWorldPosition(wp);
-        const c = l.color.clone().convertLinearToSRGB();
-        const p = { x: wp.x, z: wp.z, r: Math.max(1.5, (l.distance || 4) * 0.9), c: [c.r, c.g, c.b], k: Math.min(0.9, l.intensity / 7) };
-        const layer = wp.y < SPLIT_Y ? 0 : 1;
-        const ci = Math.floor((p.x - x0) / cell), cj = Math.floor((p.z - z0) / cell) + (layer ? SIZE : 0), rr = Math.ceil(p.r / cell);
-        rect = union(rect, { i0: Math.max(0, ci - rr), i1: Math.min(W - 1, ci + rr), j0: Math.max(0, cj - rr), j1: Math.min(Hh - 1, cj + rr) });
-        return [p, layer];
-      });
-      const dirty = union(rect, lastRect);
-      if (!dirty) return;
-      for (let j = dirty.j0; j <= dirty.j1; j++) {
-        const s = (j * W + dirty.i0) * 4, e = (j * W + dirty.i1 + 1) * 4;
-        work.set(base.subarray(s, e), s);
+        lc.copy(l.color).convertLinearToSRGB();
+        const k = Math.min(0.9, l.intensity / 7);
+        dynP[n].set(snapC(wp.x, x0), snapC(wp.z, z0), Math.max(1.5, (l.distance || 4) * 0.9), wp.y < SPLIT_Y ? 0 : 1);
+        dynC[n].set(lc.r * k, lc.g * k, lc.b * k, k);
       }
-      for (const [p, layer] of discs) disc(work, p, layer);
-      for (let j = dirty.j0; j <= dirty.j1; j++) for (let i = dirty.i0; i <= dirty.i1; i++) toBytes(j * W + i, work);
-      upload(dirty);
-      lastRect = rect;
     },
   };
 }

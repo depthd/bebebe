@@ -19,12 +19,13 @@ function lab(r, g, b) {
 }
 const PAL_LAB = PALETTE.map((c) => lab(...c));
 
-function nearest(r, g, b) {
+// wL < 1 weighs lightness less than hue and chroma: a shaded colour then stays in its own ramp
+function nearest(r, g, b, wL = 1) {
   const [L, A, B] = lab(r, g, b);
   let best = 0, bd = Infinity;
   for (let i = 0; i < PAL_LAB.length; i++) {
     const p = PAL_LAB[i];
-    const d = (p[0] - L) ** 2 + (p[1] - A) ** 2 + (p[2] - B) ** 2;
+    const d = wL * (p[0] - L) ** 2 + (p[1] - A) ** 2 + (p[2] - B) ** 2;
     if (d < bd) { bd = d; best = i; }
   }
   return best;
@@ -68,11 +69,13 @@ export function quantise(img, { dither = 0, alphaCut = null } = {}) {
   return img;
 }
 
-// the post pass's 3D LUT: every display colour to its palette colour (RGBA8, sampled nearest)
-export function lut3D() {
+// the post pass's 3D LUT: every display colour to its palette colour (RGBA8, sampled nearest).
+// wL: lightness weight (see nearest)
+export function lut3D(wL = 1) {
   const data = new Uint8Array(N * N * N * 4);
   for (let i = 0; i < LUT.length; i++) {
-    const c = PALETTE[LUT[i]];
+    const r = i % N, g = ((i / N) | 0) % N, b = (i / (N * N)) | 0;
+    const c = PALETTE[wL === 1 ? LUT[i] : nearest((r * 255) / 31, (g * 255) / 31, (b * 255) / 31, wL)];
     data.set([c[0], c[1], c[2], 255], i * 4);
   }
   const t = new THREE.Data3DTexture(data, N, N, N);

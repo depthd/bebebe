@@ -37,17 +37,17 @@ function resample(img, w, h) {
 
 // tiles redrawn pixel-exact instead of resampled: n x n tiles of p px with a 1 px grout line,
 // each tile the source's colour at its centre (the grout from the source's corner)
-function retile(img, n, p) {
+function retile(img, n, p, grout = 1) {
   const [sw, sh] = dims(img);
   const src = canvas(sw, sh), sg = src.getContext('2d', { willReadFrequently: true });
   sg.drawImage(img, 0, 0);
   const px = sg.getImageData(0, 0, sw, sh).data;
-  const at = (x, y) => {
+  const at = (x, y, f = 1) => {
     const k = (Math.floor(y) * sw + Math.floor(x)) * 4;
-    return `rgb(${px[k]},${px[k + 1]},${px[k + 2]})`;
+    return `rgb(${px[k] * f},${px[k + 1] * f},${px[k + 2] * f})`;
   };
   const out = canvas(n * p, n * p), g = out.getContext('2d', { willReadFrequently: true });
-  g.fillStyle = at(0, 0);
+  g.fillStyle = at(0, 0, grout);
   g.fillRect(0, 0, n * p, n * p);
   for (let i = 0; i < n; i++)
     for (let j = 0; j < n; j++) {
@@ -55,6 +55,17 @@ function retile(img, n, p) {
       g.fillRect(i * p + 1, j * p + 1, p - 1, p - 1);
     }
   return out;
+}
+
+// a pattern's deviation from its mean colour times k: thin lines that the downscale averaged away come
+// back strong enough to survive the palette
+function stretch(d, k) {
+  const m = [0, 0, 0];
+  let n = 0;
+  for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 0) { m[0] += d[i]; m[1] += d[i + 1]; m[2] += d[i + 2]; n++; }
+  if (!n) return;
+  for (let c = 0; c < 3; c++) m[c] /= n;
+  for (let i = 0; i < d.length; i += 4) for (let c = 0; c < 3; c++) d[i + c] = m[c] + (d[i + c] - m[c]) * k;
 }
 
 // how many uv units per metre a mesh maps onto (sqrt of uv area over world area, the texture's repeat
@@ -92,7 +103,7 @@ export function createTextures() {
     const img = e.src.image;
     const [sw, sh] = dims(img);
     let c;
-    if (e.opt.tiles) c = retile(img, ...e.opt.tiles);
+    if (e.opt.tiles) c = retile(img, ...e.opt.tiles, e.opt.grout);
     else {
       let [w, h] = e.opt.size(sw, sh);
       w = Math.max(1, Math.min(sw, Math.round(w)));
@@ -101,6 +112,7 @@ export function createTextures() {
     }
     const g = c.getContext('2d', { willReadFrequently: true });
     const d = g.getImageData(0, 0, c.width, c.height);
+    if (e.opt.contrast) stretch(d.data, e.opt.contrast);
     quantise(d, { dither: e.opt.dither ?? 0, alphaCut: e.opt.alphaCut ?? null });
     g.putImageData(d, 0, 0);
     const t = e.out;
@@ -112,7 +124,7 @@ export function createTextures() {
 
   return {
     isOut: (t) => outs.has(t),
-    // the processed copy of tex. opt: { size(w, h) -> [w, h] | tiles: [n, p], dither, alphaCut }
+    // the processed copy of tex. opt: { size(w, h) -> [w, h] | tiles: [n, p] (+ grout: its colour x), contrast, dither, alphaCut }
     get(tex, opt) {
       if (!tex || outs.has(tex)) return tex;
       if (tex.isDataTexture || tex.isCompressedTexture || tex.isVideoTexture || tex.isRenderTargetTexture || tex.isData3DTexture) return tex;

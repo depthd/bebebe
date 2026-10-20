@@ -23,7 +23,9 @@ const PAL_SRGB = ['#7a4527', '#b5462f', '#d9a441', '#f1ece0', '#9fc7b0', '#7fb0d
   .map((h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)));
 
 const HULL_MIN = 0.04; // m: bounding-sphere radius under which nothing gets a hull
-const PUDDLE = '#b8d43a', TARGET = '#ffd25a', CAT_INK = '#7a6a5e', NIGHT = '#1a2440';
+// PUDDLE is the albedo: under the flat's warm lamps it lands on the panel's lime #b8d43a (that albedo
+// itself came out lemon yellow)
+const PUDDLE = '#8ccf3a', TARGET = '#ffd25a', CAT_INK = '#7a6a5e', NIGHT = '#1a2440';
 
 export default {
   name: 'Мультик',
@@ -56,9 +58,10 @@ export default {
         float alb = max(dot(diffuseColor.rgb, W), 0.02);
         float lit = dot(lightOnly, W) / alb;
         ${BANDED ? `
-        // the lamp's falloff in steps too (a painted pool of light): 1.0 / 0.7 / 0.42 of the full light,
-        // and under 0.14 a dim ramp, lifted x3 so a dark room is dim, not black
-        float q = lit >= 0.7 ? 1.0 + (lit - 0.7) * 0.08 : lit >= 0.35 ? 0.7 : lit >= 0.14 ? 0.42 : lit * 3.0;
+        // the lamp's falloff in steps too (a painted pool of light): 1.0 / 0.7 / 0.42 / 0.24 of the full
+        // light, and only under 0.05 a ramp, lifted x4.8 so a dark corner is dim, not black (a longer
+        // ramp painted soft muddy rings on the stairwell ceiling and the kiosk walls)
+        float q = lit >= 0.7 ? 1.0 + (lit - 0.7) * 0.08 : lit >= 0.35 ? 0.7 : lit >= 0.14 ? 0.42 : lit >= 0.05 ? 0.24 : lit * 4.8;
         lightOnly *= q / max(lit, 1e-4);
         lit = q;` : ''}
         outgoingLight = lightOnly * mix(vec3(0.62, 0.6, 0.9), vec3(1.0), smoothstep(0.18, 0.45, lit)) + totalEmissiveRadiance;
@@ -241,14 +244,36 @@ export default {
     // ---------- ink ----------
     const inkMat = hullMaterial(INK, 2);
     const catInk = hullMaterial(CAT_INK, 2);
+    const inkOpen = hullMaterial(INK, 2, { open: true });
     const hiMat = hullMaterial(TARGET, 4);
+    const hiOpen = hullMaterial(TARGET, 4, { open: true });
     const shellMat = lineMaterial(INK, 2);
-    const ownMats = new Set([inkMat, catInk, hiMat, shellMat]);
+    const ownMats = new Set([inkMat, inkOpen, catInk, hiMat, hiOpen, shellMat]);
+    // ink widths are in pixels of whatever is being drawn: the main view, the phone's door camera (a
+    // scissored corner of the canvas) and the bathroom mirror (its own target, drawn in the middle of
+    // the main render), so the scene's own render hooks set the size and put it back afterwards
+    const vp = new THREE.Vector4();
+    const resStack = Array.from({ length: 4 }, () => new THREE.Vector2());
+    let resDepth = 0;
+    const sceneBefore = scene.onBeforeRender, sceneAfter = scene.onAfterRender;
+    scene.onBeforeRender = function (r, ...rest) {
+      resStack[Math.min(resDepth, 3)].copy(RES.value);
+      resDepth++;
+      r.getCurrentViewport(vp);
+      if (vp.z > 0 && vp.w > 0) RES.value.set(vp.z, vp.w);
+      return sceneBefore.call(this, r, ...rest);
+    };
+    scene.onAfterRender = function (...a) {
+      if (resDepth > 0) RES.value.copy(resStack[Math.min(--resDepth, 3)]);
+      return sceneAfter.call(this, ...a);
+    };
     const hulls = new WeakMap(); // mesh -> its hull
 
+    // an opaque DoubleSide shell (the bucket, the pot, the ladle): it may be open, both its sides are drawn
+    const openShell = (mats) => mats.every((m) => m?.side === THREE.DoubleSide && !m.transparent);
     function wantsHull(o, mats) {
       if (o.isInstancedMesh || o.isSkinnedMesh) return false;
-      if (mats.some((m) => !m || m.transparent || m.side === THREE.DoubleSide || m.blending === THREE.AdditiveBlending || m.toneMapped === false || m.isShaderMaterial)) return false;
+      if (mats.some((m) => !m || m.transparent || (m.side === THREE.DoubleSide && !openShell(mats)) || m.blending === THREE.AdditiveBlending || m.toneMapped === false || m.isShaderMaterial)) return false;
       if (o.name?.endsWith('_ink')) return false;
       if (o.parent?.children.some((s) => s !== o && s.name === `${o.name}_ink`)) return false; // baked hull in the GLB
       const geo = o.geometry;
@@ -260,8 +285,10 @@ export default {
     }
     function addHull(o, material = inkMat) {
       if (hulls.has(o)) return hulls.get(o);
-      const g = hullGeometry(o.geometry);
+      const open = openShell([o.material].flat());
+      const g = hullGeometry(o.geometry, { open });
       if (!g) return hulls.set(o, null), null;
+      if (open && material === inkMat) material = inkOpen;
       const h = makeHull(o, g, material);
       hulls.set(o, h);
       return h;
@@ -322,7 +349,7 @@ export default {
     const blobGeo = new THREE.CircleGeometry(0.05, 12).rotateX(-Math.PI / 2).scale(1.6, 1, 0.8).translate(0.07, 0.0015, -0.07);
     function makePuddle(o) {
       const src = o.material;
-      const m = new THREE.MeshToonMaterial({ color: PUDDLE, gradientMap: grad, emissive: PUDDLE, emissiveIntensity: 0.22, transparent: true, opacity: src.opacity, depthWrite: false });
+      const m = new THREE.MeshToonMaterial({ color: PUDDLE, gradientMap: grad, emissive: PUDDLE, emissiveIntensity: 0.12, transparent: true, opacity: src.opacity, depthWrite: false });
       m.userData.toon = true;
       o.material = m;
       const ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: INK, transparent: true, opacity: src.opacity, depthWrite: false }));
@@ -379,7 +406,8 @@ export default {
       let st = s.userData.toonHead;
       if (!map.userData.toonSticker) {
         // the game put a new picture on (setFace): remember its size and centre, then cover it
-        st = s.userData.toonHead = { raw: map, base: [s.scale.x, s.scale.y, s.center.x, s.center.y], ver: -1 };
+        const c0 = (s.userData.toonC0 ??= s.center.clone()); // the game's own anchor: the centre we set is already padded
+        st = s.userData.toonHead = { raw: map, base: [s.scale.x, s.scale.y, c0.x, c0.y], ver: -1 };
       }
       if (!st || st.ver === st.raw.version) return;
       const p = stickerOf(st.raw);
@@ -509,7 +537,8 @@ export default {
       if (!root) return;
       root.traverse((o) => {
         if (!o.isMesh || o.userData.toonOwn || !hulls.get(o)) return;
-        const h = new THREE.Mesh(hulls.get(o).geometry, hiMat);
+        const own = hulls.get(o);
+        const h = new THREE.Mesh(own.geometry, own.material === inkOpen ? hiOpen : hiMat);
         h.userData.toonOwn = true;
         h.matrixAutoUpdate = false;
         h.raycast = () => {};

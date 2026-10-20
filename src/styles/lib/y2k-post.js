@@ -47,8 +47,27 @@ export function makeGrade() {
   });
 }
 
-// half resolution is built in: UnrealBloomPass starts its mip chain at half the composer size
-export function makeBloom(renderer, { strength = 0.35, radius = 0.4, threshold = 0.85 } = {}) {
+// half resolution is built in: UnrealBloomPass starts its mip chain at half the composer size.
+// knee: the high pass fades in over [threshold, threshold + knee] instead of a hard cut, so a glint
+// that just crosses the line doesn't pop
+// cap: what enters the blur is scaled down to this luminance at most. The inside of a lamp shade 10 cm from the
+// bulb is 50+ in linear light; uncapped, it hazes the whole shade and the ceiling around it
+export function makeBloom(renderer, { strength = 0.35, radius = 0.4, threshold = 0.85, knee = 0.01, cap = 1e4 } = {}) {
   const size = renderer.getDrawingBufferSize(new THREE.Vector2());
-  return new UnrealBloomPass(size, strength, radius, threshold);
+  const pass = new UnrealBloomPass(size, strength, radius, threshold);
+  pass.highPassUniforms.smoothWidth.value = knee;
+  pass.highPassUniforms.uCap = { value: cap };
+  const hp = pass.materialHighPassFilter;
+  hp.fragmentShader = /* glsl */ `
+    uniform sampler2D tDiffuse;
+    uniform float luminosityThreshold, smoothWidth, uCap;
+    varying vec2 vUv;
+    void main() {
+      vec4 texel = texture2D( tDiffuse, vUv );
+      float v = luminance( texel.rgb );
+      float a = smoothstep( luminosityThreshold, luminosityThreshold + smoothWidth, v );
+      gl_FragColor = vec4( texel.rgb * a * min( 1.0, uCap / max( v, 1e-4 ) ), 0.0 );
+    }`;
+  hp.needsUpdate = true;
+  return pass;
 }

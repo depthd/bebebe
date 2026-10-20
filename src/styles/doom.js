@@ -6,7 +6,8 @@
 //    palette LUT pass at the end so the bands and the drunk blur snap to the same 256 colours;
 //  - the photo heads as digitised sprites (80 px, ordered dither) that take the sector light;
 //  - fullbright floors so bottles, puddles, doors, the cat's eyes and the guys never vanish in the dark.
-// Knobs: &lines=480 (resolution), &wobble=1 (PS1 vertex snap + affine textures, off by default).
+// Knobs: &lines=480 (resolution), &wobble=1 (PS1 vertex snap + affine textures, off by default),
+// &pal=0 (no palette pass, to compare), &lw=0.5 (palette pass: lightness weighs less than hue).
 import * as THREE from 'three';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import * as T from '../world/textures.js';
@@ -25,7 +26,13 @@ const TUNE = {
   heads: { head: 80, drink: 120, cat: 48 }, // sprite heights in px
   dither: 1 / 32, // ordered dither on the heads: offsets up to ±1/32 of the range
   vignette: 0.12, // the sober vignette (fx.js has 0.3): in 256 colours it shows as rings
+  patternContrast: 2, // wallpaper patterns after the downscale
+  lightnessWeight: 1, // the palette pass: < 1 keeps a shaded colour in its own ramp (less hue jumping)
 };
+
+// colours the style repaints: the yard's asphalt is near black, so even under a street lamp it stayed
+// a void; Build's outdoor floors are a readable grey
+const REPAINT = { '2b2c2e': '#45464a', '55534f': '#6a6862' };
 
 const isHead = (o) => o.isSprite && o.material.alphaTest > 0 && o.material.sizeAttenuation !== false && o.material.blending !== THREE.AdditiveBlending;
 
@@ -100,10 +107,13 @@ export default {
     // ---- 5) textures: 64-128 px per metre, the palette, nearest
     const textures = createTextures();
     const KNOWN = new Map();
-    for (const [k, fn] of Object.entries(T.wallpapers)) if (k !== 'wallTile') KNOWN.set(fn(), { size: () => [64, 64] }); // 0.5 m each
+    // walls and floors at 64 px per metre (wallpapers are 0.5 m a texture, floors 1 m); the patterns'
+    // thin lines get their contrast back after the downscale so they survive the palette
+    for (const [k, fn] of Object.entries(T.wallpapers)) if (k !== 'wallTile') KNOWN.set(fn(), { size: () => [32, 32], contrast: TUNE.patternContrast });
     KNOWN.set(T.parquet(), { size: () => [64, 64] });
-    KNOWN.set(T.linoleum(), { size: () => [64, 64] });
-    KNOWN.set(T.concrete(), { size: () => [64, 64] });
+    KNOWN.set(T.linoleum(), { size: () => [64, 64], contrast: 1.4 });
+    KNOWN.set(T.concrete(), { size: () => [64, 64], contrast: 1.5 });
+    KNOWN.set(T.wallpapers.kitchen(), { tiles: [4, 8], grout: 0.85 }); // tiles redrawn pixel-exact: 4 a texture, 1 px grout
     KNOWN.set(T.wallTile(), { tiles: [6, 11] }); // 6 tiles a metre, redrawn pixel-exact
     KNOWN.set(T.floorTile(), { tiles: [10, 7] });
     KNOWN.set(T.wallCarpet(), { size: () => [128, 80] });
@@ -159,7 +169,7 @@ export default {
     const heads = new Map();
     const HEADOPT = Object.fromEntries(Object.entries(TUNE.heads).map(([k, px]) => [k, { size: (w, h) => [(px * w) / h, px], dither: TUNE.dither, alphaCut: 0.5 }]));
     const addHead = (s) => {
-      const kind = s.userData.catFace ? 'cat' : s.scale.y > 0.6 ? 'drink' : 'head';
+      const kind = s.userData.catFace ? 'cat' : s.center.x > 0.6 ? 'drink' : 'head'; // the drink photo is off-centre (figures.js)
       const u = { value: new THREE.Vector3(1, 1, 1) };
       HEAD_LIT.set(s.material, u);
       s.material.onBeforeCompile = headCompile;
@@ -188,7 +198,13 @@ export default {
         }
         if (m.isMeshStandardMaterial || m.isMeshLambertMaterial || m.isMeshPhongMaterial) {
           changed = true;
-          return world.convert(m, floorOf(o, m), o);
+          const c = world.convert(m, floorOf(o, m), o);
+          const re = REPAINT[m.color?.getHexString()];
+          if (re && !c.userData.doomRepainted) {
+            c.color.copy(snapHex(new THREE.Color(re)));
+            c.userData.doomRepainted = true;
+          }
+          return c;
         }
         return m;
       });
@@ -208,23 +224,25 @@ export default {
     }
 
     // ---- 6) the palette pass, after the drunk pass and the output pass
-    ctx.displayPass(new ShaderPass(paletteShader(lut3D())));
+    const palPass = new ShaderPass(paletteShader(lut3D(Number(params.get('lw')) || TUNE.lightnessWeight)));
+    palPass.enabled = params.get('pal') !== '0'; // &pal=0: no palette pass (to compare)
+    ctx.displayPass(palPass);
 
     const v = new THREE.Vector3(), cam = new THREE.Vector3(), L = [0, 0, 0, 0];
     const attached = (o) => {
       for (; o; o = o.parent) if (o === scene) return true;
       return false;
     };
-    window.__doom = { sector, textures, heads, TUNE };
+    window.__doom = { sector, textures, heads, TUNE, palPass };
     tlog('done');
     return {
-      update() {
+      update(dt) {
         fit();
         // new guys, bottles, puddles and hand props get the look on their first frame
         game?.dynamic.traverse(style);
         camera.traverse(style);
         textures.refresh();
-        sector.update();
+        sector.update(dt);
         camera.getWorldPosition(cam);
         for (const [s, h] of heads) {
           if (!attached(s)) continue;
@@ -234,7 +252,8 @@ export default {
           sector.sample(v.x, v.y, v.z, L);
           const d = v.distanceTo(cam);
           const k = 1 - THREE.MathUtils.smoothstep(d, band.x, band.y) * (1 - 0.7 * L[3]);
-          const lit = [0, 1, 2].map((c) => Math.max(TUNE.headMin, Math.floor(L[c] * k * 31.99) / 31) ** 2.2);
+          const lv = Math.floor(L[3] * k * 31.99) / 31 / Math.max(L[3], 0.004); // the level in 32 steps, as the world's
+          const lit = [0, 1, 2].map((c) => Math.max(TUNE.headMin, L[c] * lv) ** 2.2);
           h.u.value.set(...lit);
         }
       },

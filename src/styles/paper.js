@@ -4,9 +4,11 @@
 //     cylinder faces get a marker line and a white cut edge along their borders (folded card boxes)
 //   - wallpapers are glued rolls (seams every 0.53 m), floors and wall feet darken next to furniture
 //     (a blurred top view of the flat, no shadow maps); the guys and the cat stand on soft blob shadows
-//   - liquids (puddles, water, vomit) are the only glossy thing: cellophane; glass is cellophane too
+//   - liquids (puddles, water, vomit) are the only glossy thing: cellophane; puddles get a cut edge and a
+//     painted white highlight (there's no environment to reflect); glass is cellophane too
 //   - the photo heads become stickers (white scissor-cut border, drop shadow) and take the room's light
-//   - the black cat gets a white paper rim; smoke and vape are cotton wool
+//   - the black cat gets a white paper rim (a constant ~3 px on screen); smoke and vape are cotton wool
+//   - skin prints are posterized; their cut edges and marker lines come from the fold-line shader
 //   - outside: a blue card sky, fog, a cut-out moon; blacks lifted to warm brown so night never goes black
 //   - knob &shadows=1: one shadow-casting spot under the current room's lamp (shadow theatre)
 import * as THREE from 'three';
@@ -25,7 +27,7 @@ const AO_K = { partyTable: 0.5, kitchenTable: 0.45, sisterDesk: 0.5, ficus: 0.55
 
 function buildPlanAO() {
   const rects = [], segs = [];
-  for (const f of FURNITURE) if (!f.onTop) rects.push({ ...f, k: AO_K[f.id] ?? 0.85 });
+  for (const f of FURNITURE) if (!f.onTop) rects.push({ ...f, k: AO_K[f.id] ?? 0.95 });
   // walls without their floor-level openings (doors), so doorways stay light
   for (const w of WALLS) {
     const ax = w.x1 - w.x0 >= w.z1 - w.z0;
@@ -59,7 +61,8 @@ function blobTexture() {
   const c = canvas(128, 128), g = c.getContext('2d');
   const gr = g.createRadialGradient(64, 64, 4, 64, 64, 63);
   gr.addColorStop(0, 'rgba(255,255,255,1)');
-  gr.addColorStop(0.45, 'rgba(255,255,255,0.7)');
+  gr.addColorStop(0.5, 'rgba(255,255,255,0.85)');
+  gr.addColorStop(0.8, 'rgba(255,255,255,0.35)');
   gr.addColorStop(1, 'rgba(255,255,255,0)');
   g.fillStyle = gr;
   g.fillRect(0, 0, 128, 128);
@@ -115,7 +118,14 @@ export default {
     const RIM = new THREE.Color('#e8e0d0');
     const rimMat = new THREE.MeshBasicMaterial({ color: RIM.clone(), side: THREE.BackSide });
     rimMat.onBeforeCompile = (sh) => {
-      sh.vertexShader = sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\ntransformed += normalize( normal ) * 0.009;');
+      // grown in view space by a share of the distance: the rim stays ~3 px wide near and far
+      sh.vertexShader = sh.vertexShader.replace(
+        '#include <project_vertex>',
+        `vec4 mvPosition = modelViewMatrix * vec4( transformed, 1.0 );
+        vec3 rimN = normalize( normalMatrix * normal );
+        mvPosition.xyz += rimN * max( 0.006, 0.0065 * -mvPosition.z );
+        gl_Position = projectionMatrix * mvPosition;`,
+      );
     };
     rimMat.customProgramCacheKey = () => 'paperRim';
     const hulls = [];
@@ -294,7 +304,7 @@ export default {
 
     // ---------- blob shadows under the guys and the cat: one instanced draw
     const BLOBS = 32;
-    const blobMat = new THREE.MeshBasicMaterial({ color: PAPER.ink, map: blobTexture(), transparent: true, opacity: 0.38, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+    const blobMat = new THREE.MeshBasicMaterial({ color: PAPER.ink, map: blobTexture(), transparent: true, opacity: 0.55, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
     const blobs = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), blobMat, BLOBS);
     blobs.frustumCulled = false;
     blobs.count = 0;
@@ -348,11 +358,19 @@ export default {
       }
     };
     let fogK = 0;
+    // fold lines are measured in drawing-buffer pixels: keep them as thick on a hi-dpi screen
+    const LINE = P.U.uPaperLine.value.clone();
+    let linePr = -1;
 
     return {
       update(dt) {
         if (renderer.toneMapping !== toneMapping) renderer.toneMapping = toneMapping;
         renderer.toneMappingExposure = exposure;
+        const pr = renderer.getPixelRatio();
+        if (pr !== linePr) {
+          linePr = pr;
+          P.U.uPaperLine.value.set(LINE.x * pr, LINE.y * pr, LINE.z);
+        }
         // new things (a visitor, a puddle, drops) are styled before their first frame, not half a second later
         visitNew(scene);
         visitNew(game?.dynamic);
@@ -379,7 +397,8 @@ export default {
             if (e) {
               st.raw = map;
               st.e = e;
-              st.base = { sx: s.scale.x, sy: s.scale.y, cx: s.center.x, cy: s.center.y };
+              const c0 = (s.userData.paperC0 ??= s.center.clone()); // the game's own anchor: the centre we set is already padded
+              st.base = { sx: s.scale.x, sy: s.scale.y, cx: c0.x, cy: c0.y };
               s.material.map = e.tex;
               const { w, h, pad } = e;
               s.scale.set((st.base.sx * (w + 2 * pad)) / w, (st.base.sy * (h + 2 * pad)) / h, 1);

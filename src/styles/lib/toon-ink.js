@@ -15,8 +15,13 @@ const fogUniforms = () => THREE.UniformsUtils.clone(THREE.UniformsLib.fog);
 
 // ---------- hulls ----------
 
-export function hullMaterial(color, px) {
+// open: for open DoubleSide shells (the bucket, the pot): pushed back in depth, so where the hull lies
+// on the shell's own inner side the shell wins and only the silhouette and the rim stay ink
+export function hullMaterial(color, px, { open = false } = {}) {
   return new THREE.ShaderMaterial({
+    polygonOffset: open,
+    polygonOffsetFactor: open ? 2 : 0,
+    polygonOffsetUnits: open ? 8 : 0,
     name: 'toon-ink',
     uniforms: { ...fogUniforms(), uColor: { value: new THREE.Color(color) }, uPx: { value: px }, uRes: RES },
     vertexShader: /* glsl */ `
@@ -50,10 +55,11 @@ export function hullMaterial(color, px) {
 }
 
 // smooth-normal copy of a geometry (positions only, welded), cached; null when the mesh is open
-// (planes, open cylinders): a back-face hull of an open surface would show through the opening
-const hullGeos = new WeakMap();
-export function hullGeometry(src) {
-  if (hullGeos.has(src)) return hullGeos.get(src);
+// (planes, open cylinders): a back-face hull of an open surface would show through the opening.
+// open = true takes open ones too (for DoubleSide shells, drawn with an open hull material).
+const hullGeos = new WeakMap(), openGeos = new WeakMap();
+export function hullGeometry(src, { open = false } = {}) {
+  if (hullGeos.has(src)) return hullGeos.get(src) ?? (open ? openGeos.get(src) ?? null : null);
   let out = null;
   const pos = src.attributes.position;
   if (pos && pos.count >= 4 && !src.morphAttributes?.position) {
@@ -62,14 +68,14 @@ export function hullGeometry(src) {
     if (src.index) g.setIndex(src.index.clone());
     const w = mergeVertices(g, 1e-4);
     g.dispose();
-    if (closed(w)) {
-      w.computeVertexNormals();
-      w.computeBoundingSphere();
-      out = w;
-    } else w.dispose();
+    w.computeVertexNormals();
+    w.computeBoundingSphere();
+    if (closed(w)) out = w;
+    else if (w.index) openGeos.set(src, w);
+    else w.dispose();
   }
   hullGeos.set(src, out);
-  return out;
+  return out ?? (open ? openGeos.get(src) ?? null : null);
 }
 
 // every edge shared by two triangles (after welding)

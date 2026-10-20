@@ -9,6 +9,8 @@
 //   - a ±8 % fBm multiply and a ±0.05 roughness wobble, projected along the face's main axis in the
 //     object's own space (static geometry is built in world space, the guys' boxes keep their noise as they move)
 //   - a detail normal from the same noise (the Sobel map), applied along the same axis
+//   - the env's diffuse irradiance scaled by uY2kIbl: the env is there for glints; as full image-based fill it
+//     flattened every room into the zal's average light and erased the pools of light under the lamps
 // Only within the flat's box (the AO texture's bounds and the flat's floor-to-ceiling): the stairwell and
 // the yard keep the detail but get no plan AO.
 import * as THREE from 'three';
@@ -19,6 +21,7 @@ export const shared = {
   uY2kNoise: { value: null },
   uY2kNrm: { value: null },
   uY2kH: { value: 2.7 },
+  uY2kIbl: { value: 1 }, // how much of the env's diffuse irradiance is kept (its reflections are untouched)
 };
 
 const VERT_DECL = /* glsl */ `
@@ -64,6 +67,7 @@ uniform vec4 uY2kAOBox;
 uniform sampler2D uY2kNoise;
 uniform sampler2D uY2kNrm;
 uniform float uY2kH;
+uniform float uY2kIbl;
 uniform vec4 uY2kA;
 uniform vec4 uY2kB;
 `;
@@ -102,7 +106,7 @@ if ( uY2kA.w > 0.0 ) {
 }
 `;
 
-const KEY = 'y2k-std-1';
+const KEY = 'y2k-std-2';
 
 // flags: { ao, wall, detail, normal, rough, freq }
 export function patchStandard(m, flags) {
@@ -121,7 +125,8 @@ export function patchStandard(m, flags) {
       .replace('#include <common>', `#include <common>\n${FRAG_DECL}`)
       .replace('#include <color_fragment>', `#include <color_fragment>\n${FRAG_ALBEDO}`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>\n${FRAG_ROUGH}`)
-      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>\n${FRAG_NORMAL}`);
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>\n${FRAG_NORMAL}`)
+      .replace('#include <lights_fragment_maps>', '#include <lights_fragment_maps>\niblIrradiance *= uY2kIbl;');
   };
   m.customProgramCacheKey = () => KEY;
   m.needsUpdate = true;

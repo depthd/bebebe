@@ -21,11 +21,16 @@ const params = new URLSearchParams(location.search);
 const SHADOWS = params.get('shadows') !== '0';
 
 export const LOOK = {
-  env: { inside: 0.35, outside: 0.2, size: 128, height: 1.4 },
+  // outside: the spec's 0.2 of a capture of the lit zal was a warm ambient fill over the whole night yard and the
+  // stairwell (it is image-based diffuse light too, not only glints); 0.04 keeps them dark beyond their lamps
+  // diffuse: the share of the env's diffuse irradiance kept (lib/y2k-shader.js uY2kIbl); its reflections stay whole
+  env: { inside: 0.35, outside: 0.04, size: 128, height: 1.4, diffuse: 0.3 },
   spot: { share: 0.5, lampKeep: 0.6, angle: 1.25, penumbra: 0.7, map: 1024, bias: -0.0004, normalBias: 0.02, far: 6.5, distance: 7, radius: 3, fade: 6 },
-  bloom: { strength: 0.35, radius: 0.4, threshold: 0.85 },
+  // threshold on the linear picture: measured, a white tablecloth under the zal lamp is 1.5-3, the ceiling over a
+  // lamp 3-6, so the spec's 0.85 bloomed half the room. Only what glows on purpose (GLOW, ×6-12) is above 5.
+  bloom: { strength: 0.35, radius: 0.4, threshold: 4.5, knee: 1.5, cap: 10 },
   fog: { color: '#0e1218', density: 0.045 },
-  night: { hemiIn: 0.8, hemiOut: 0.3, moonOut: 0.35 },
+  night: { hemiIn: 1, hemiOut: 0.3, moonOut: 0.35 },
   heads: { min: 0.5, max: 1.15, gamma: 0.5, refDist: 1.4 },
 };
 
@@ -51,7 +56,8 @@ const ROLES = {
   '5a2d1c': { roughness: 0.45 }, // the dermantin entrance door
   // chrome and brass
   '9aa0a6': { roughness: 0.15, metalness: 1 }, // M.metal
-  'c9dde6': { roughness: 0.05, metalness: 1 }, // the wardrobe mirror door
+  'c9dde6': { roughness: 0.08, metalness: 0 }, // the wardrobe mirror door: a glossy pale panel (as a metal it only
+  // showed the zal's env and read as a dark red lacquer door)
   'c9a44a': { roughness: 0.25, metalness: 1 }, // door knobs
   'b08a3a': { roughness: 0.3, metalness: 0.9 }, // upholstery buttons
   '8b9298': { roughness: 0.2, metalness: 0.9 }, // shower hose
@@ -65,13 +71,22 @@ const ROLES = {
 const WALL_COLORS = new Set(['d9d2c3', '3f6b5a', 'c9c6b8']); // flat paint, the stairwell's green and white
 const CEILING = 'efece6';
 
-// MeshBasic things that should bloom: how much brighter (the linear picture goes above the threshold)
+// MeshBasic things that should bloom: how much brighter, so they land at a linear luminance of 6-10, well over
+// the bloom threshold. They are white on screen either way (the composer tone-maps everything, toneMapped:false
+// included), the halo is what changes.
 const GLOW = {
-  'fff2d0': 3, // bulbs
-  'ffd59a': 3, // street lamp heads
-  'f4fbff': 2.2, // kiosk tubes
-  '4cff7a': 2, // microwave LED
-  'ffcf5a': 2.5, // cake candle flames
+  'fff2d0': 10, // bulbs
+  'ffd59a': 12, // street lamp heads
+  'f4fbff': 7, // kiosk tubes
+  '4cff7a': 5, // microwave LED (a small strip: more floods the door glass)
+  'ffcf5a': 10, // cake candle flames
+};
+const SIGN_GLOW = 7; // the "Продукты 24" signs: the mint letters go over the threshold, the dark green field stays under
+// emissive MeshStandard bits that should bloom, by emissive colour (the game drives emissiveIntensity at runtime)
+const EMISSIVE_GLOW = {
+  'ff5a10': 7, // the grill coals: they glow more as the heat rises (emissiveIntensity 0.3-2.1)
+  // the PC's violet RGB strip is left as it is: violet has so little luminance that it only crosses the bloom
+  // threshold at ×25, where ACES turns it white
 };
 
 export default {
@@ -84,6 +99,7 @@ export default {
     shared.uY2kNoise.value = YT.noise();
     shared.uY2kNrm.value = YT.noiseNormal();
     shared.uY2kH.value = H;
+    shared.uY2kIbl.value = LOOK.env.diffuse;
     if (inGame) {
       // the flat, the balcony and the landing, padded: walls and furniture footprints in black
       const box = {
@@ -113,7 +129,8 @@ export default {
       shared.uY2kAOBox.value.set(1e5, 1e5, 1e-6, 1e-6);
     }
     const floorMaps = new Map([[T.parquet(), 'parquet'], [T.linoleum(), 'linoleum'], [T.floorTile(), 'tile'], [T.concrete(), 'concrete']]);
-    const wallMaps = new Set([...Object.values(T.wallpapers).map((f) => f()), T.wallTile()]);
+    const wallTile = T.wallTile();
+    const wallMaps = new Set([...Object.values(T.wallpapers).map((f) => f()), wallTile]);
     const fabricMaps = new Set([T.wallCarpet(), T.floorRug()]);
 
     // ---------- where a mesh lives
@@ -136,6 +153,8 @@ export default {
       if (m.isMeshStandardMaterial) {
         const hex = m.color.getHexString();
         const role = ROLES[hex];
+        const eg = EMISSIVE_GLOW[m.emissive.getHexString()];
+        if (eg) m.emissive.multiplyScalar(eg);
         if (role?.roughness !== undefined) m.roughness = role.roughness;
         if (role?.metalness !== undefined) m.metalness = role.metalness;
         if (role?.color) m.color.set(role.color);
@@ -143,15 +162,20 @@ export default {
         const flags = { ao: world ? 1 : 0, detail: world ? 0.08 : 0.03, rough: world ? 0.1 : 0.05 };
         const floor = floorMaps.get(m.map);
         if (floor) {
-          Object.assign(flags, { normal: floor === 'concrete' ? 0.18 : 0.07, freq: 1.2 });
+          Object.assign(flags, { normal: floor === 'concrete' ? 0.1 : 0.07, freq: 1.2 });
           if (floor === 'parquet') {
             m.roughnessMap = YT.parquetRough();
             m.roughness = 1;
           }
           if (floor === 'linoleum') m.roughness = 0.45;
           if (floor === 'tile') m.roughness = 0.3;
+        } else if (m.map === wallTile) {
+          // glazed tile: a glint, almost no plaster in it
+          Object.assign(flags, { wall: 1, normal: 0.05, freq: 2.2, detail: 0.04 });
+          m.roughness = 0.35;
         } else if (wallMaps.has(m.map) || (WALL_COLORS.has(hex) && !m.map)) {
-          Object.assign(flags, { wall: 1, normal: 0.25, freq: 2.2 });
+          // painted plaster and wallpaper: a faint, fine relief (0.25 at 2.2/m read as lumpy cave stucco)
+          Object.assign(flags, { wall: 1, normal: 0.05, freq: 4 });
         } else if (hex === CEILING) {
           Object.assign(flags, { detail: 0.05 });
         } else if (role?.fabric || fabricMaps.has(m.map) || (m.roughness >= (world ? 0.9 : 0.7) && m.metalness < 0.3 && !m.transparent)) {
@@ -171,7 +195,7 @@ export default {
         if (GLOW[hex] && !m.map) m.color.multiplyScalar(GLOW[hex]);
         // the "Продукты 24" signs: a canvas 512×96, not tone mapped, two-sided
         const img = m.map?.image;
-        if (img && m.toneMapped === false && m.side === THREE.DoubleSide && img.width === 512 && img.height === 96) m.color.multiplyScalar(1.6);
+        if (img && m.toneMapped === false && m.side === THREE.DoubleSide && img.width === 512 && img.height === 96) m.color.multiplyScalar(SIGN_GLOW);
       }
     };
 
@@ -349,7 +373,7 @@ export default {
 
     // ---------- per frame
     let cur = null, w = 0, fogD = 0, envK = E.inside, outK = 0;
-    const cam = new THREE.Vector3();
+    const cam = new THREE.Vector3(), lastCam = new THREE.Vector3(1e5, 0, 0);
     const M4 = new THREE.Matrix4(), QT = new THREE.Quaternion(), SC = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0);
     let frame = 0;
 
@@ -363,13 +387,17 @@ export default {
           capture();
         }
         camera.getWorldPosition(cam);
+        // a jump (a teleport, the screenshots, the camera flying to the pelmeni pot) snaps the blends below;
+        // walking through a door fades them
+        const jump = cam.distanceTo(lastCam) > 1;
+        lastCam.copy(cam);
         const room = inGame && cam.y > -0.8 ? roomAt(cam.x, cam.z) : null;
         const outsideNow = inGame && (!room || room.id === 'landing');
 
         // the spot follows the room: fade out, move, fade in
         let want = inGame ? (room?.lamp ? lampOf(room) : room?.id === 'balcony' ? living : null) : lamps[0] ?? null;
         if (want !== cur) {
-          w = Math.max(0, w - dt * S.fade);
+          w = jump ? 0 : Math.max(0, w - dt * S.fade);
           if (w === 0) {
             if (cur) cur.light.intensity = cur.base;
             cur = want;
@@ -382,7 +410,8 @@ export default {
             }
             castersFor(cur);
           }
-        } else w = Math.min(1, w + dt * S.fade);
+        }
+        if (want === cur) w = jump ? 1 : Math.min(1, w + dt * S.fade);
         if (cur) {
           cur.light.intensity = cur.base * (1 - (1 - S.lampKeep) * w);
           spot.intensity = cur.base * S.share * w;
@@ -391,7 +420,7 @@ export default {
         renderer.shadowMap.needsUpdate = SHADOWS && (spot.intensity > 0 || frame < 3);
 
         // outside at night: fog in, fill light and env down
-        outK += ((outsideNow ? 1 : 0) - outK) * Math.min(1, dt * 3);
+        outK += ((outsideNow ? 1 : 0) - outK) * (jump ? 1 : Math.min(1, dt * 3));
         fogD = LOOK.fog.density * outK;
         if (scene.fog?.isFogExp2) scene.fog.density = fogD;
         envK = E.inside + (E.outside - E.inside) * outK;
