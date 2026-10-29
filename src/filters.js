@@ -167,11 +167,12 @@ export function createFilters(composer, el) {
     setSize(w, h, ratio) {
       pass.uniforms.uRes.value = [w * ratio, h * ratio];
     },
-    update(time, clock) {
+    // overlay = false: no screen texts (the orbit view is drawn without the filter)
+    update(time, clock, overlay = true) {
       pass.uniforms.uTime.value = time;
       const ov = OVERLAYS[FILTERS[i].id]?.(clock) ?? '';
       if (ov !== lastOv) el.innerHTML = lastOv = ov;
-      el.hidden = !ov;
+      el.hidden = !ov || !overlay;
     },
   };
 }

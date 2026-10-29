@@ -59,7 +59,7 @@ export function createHUD({ onBuy }) {
   };
   const updateSlide = () => {
     const sum = total(), poor = sum > money;
-    el.shopTotal.innerHTML = sum ? `Итого <b>${sum} ₽</b> · останется ${money - sum} ₽` : `Баланс ${money} ₽ — выбери, что заказать`;
+    el.shopTotal.innerHTML = sum ? `Итого <b>${sum} ₽</b> · ${poor ? `не хватает ${sum - money} ₽` : `останется ${money - sum} ₽`}` : `Баланс ${money} ₽ — выбери, что заказать`;
     el.shopTotal.classList.toggle('poor', poor);
     el.slide.classList.toggle('no', poor || !sum);
     el.slideText.textContent = !sum ? 'Корзина пуста' : poor ? 'Не хватает денег' : `Сдвинь → купить всё за ${sum} ₽`;
@@ -125,20 +125,29 @@ export function createHUD({ onBuy }) {
     reset() {
       cache = {};
     },
+    // someone knocks: the phone opens on the door camera
+    showCam() {
+      tab('cam');
+    },
     // progress of a hands-on action, under the crosshair
     setUse(h) {
       const u = $('use');
       u.hidden = !h;
       if (!h) return;
       u.classList.toggle('top', !!h.top); // close-ups: keep the middle of the screen free
+      const home = h.top ? $('top-mid') : el.hud; // up top it lines up under the toasts and the knock banner
+      if (u.parentElement !== home) home.append(u);
       set('useLabel', $('use-label'), esc(h.label));
       $('use-bar').parentElement.hidden = h.progress === null;
       $('use-bar').style.width = `${Math.round((h.progress ?? 0) * 100)}%`;
     },
-    // the phone's camera rectangle in canvas pixels (for the scissored render), or null
+    // the phone's camera rectangle in canvas pixels (for the scissored render), or null.
+    // The phone is tilted: its own size around the centre, not the bigger box around the tilted view
     camRect() {
       if (el.phone.hidden || el.cam.hidden) return null;
-      return el.camView.getBoundingClientRect();
+      const b = el.camView.getBoundingClientRect(), width = el.camView.offsetWidth, height = el.camView.offsetHeight;
+      const left = Math.round(b.left + (b.width - width) / 2), top = Math.round(b.top + (b.height - height) / 2);
+      return { left, top, width, height, bottom: top + height };
     },
     update(game, { roomName, target, actions }) {
       const st = game.state;
@@ -150,7 +159,7 @@ export function createHUD({ onBuy }) {
       const order = game.orders.find((o) => !o.done);
       el.courier.hidden = !atDoor && !order;
       el.courier.classList.toggle('here', atDoor);
-      if (atDoor) el.courier.textContent = `🛵 Курьер у двери! Открой (${Math.ceil(game.visitor.left)} c)`;
+      if (atDoor) el.courier.textContent = `🛵 Курьер у двери! Открой (${Math.ceil(game.visitor.left)} с)`;
       else if (order) el.courier.textContent = `🛵 Курьер через ${game.gameMinutes(order.eta)} мин: ${order.title}`;
       el.total.style.width = `${st.totalFun}%`;
       el.total.parentElement.classList.toggle('low', st.totalFun < 25);

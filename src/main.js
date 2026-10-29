@@ -113,11 +113,6 @@ let locked = false;
 let dragging = false;
 
 const isTouchOnly = matchMedia('(pointer: coarse)').matches && !matchMedia('(pointer: fine)').matches;
-if (isTouchOnly) {
-  $('btn-play').disabled = true;
-  document.querySelectorAll('#night-pick button').forEach((b) => (b.disabled = true));
-  $('mobile-note').hidden = false;
-}
 
 function show(id, v) {
   $(id).hidden = !v;
@@ -138,7 +133,7 @@ function startNight(n) {
   setPhotoMode(false);
   player.place(START.x, START.z, START.yaw);
   hud.reset();
-  started = true;
+  started = !attract; // the party behind the title doesn't count: the menu still says «Начать»
 }
 
 function lock() {
@@ -179,6 +174,8 @@ function pause() {
   $('btn-play').textContent = started && !game.over ? 'Продолжить' : `Начать ночь ${game.night}`;
   show('menu', true);
   show('hud', false);
+  audio.setMusic(false); // the frame loop keeps them off from here, but a hidden tab gets no frames
+  audio.voices.stopAll();
 }
 
 function toOrbit() {
@@ -197,6 +194,7 @@ function toOrbit() {
 function setPhone(open, relock = true) {
   phoneOpen = open;
   show('phone', open);
+  if (open && game.visitor) hud.showCam(); // someone knocks: straight to the door camera
   if (open) document.exitPointerLock?.();
   else if (relock && mode === 'play') lock();
 }
@@ -213,13 +211,15 @@ game.onEnd = (res) => {
   const last = res.win && res.night >= TUNE.nights;
   $('end-night').textContent = `Ночь ${res.night} из ${TUNE.nights}`;
   $('end-title').textContent = last ? BIRTHDAY.title : res.win ? 'Пережил ночь!' : 'Провал';
-  $('end-reason').textContent = last ? BIRTHDAY.lines.join(' ') : res.reason;
+  $('end-reason').textContent = last ? BIRTHDAY.lines.slice(0, -1).join(' ') : res.reason;
+  if (last) $('end-reason').append(document.createElement('br'), BIRTHDAY.lines.at(-1)); // the signature on its own line
   const tile = (v, label) => `<div><b>${v}</b><span>${label}</span></div>`;
+  const n = st.stats.helped, times = n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? 'раза' : 'раз'; // 1 раз, 2 раза, 5 раз
   $('end-stats').innerHTML = [
-    tile(st.stats.helped, 'раз помог пацанам'),
+    tile(n, `${times} помог пацанам`),
     tile(`${Math.round(st.hut)}%`, 'осталось от хаты'),
-    tile(`${st.stats.spent} ₽`, 'на доставку'),
-    tile(`${st.stats.bribes} ₽`, 'на взятки соседям'),
+    tile(`${st.stats.spent} ₽`, 'потрачено'),
+    tile(`${st.stats.bribes} ₽`, 'на взятки ментам'),
     tile(`${st.money} ₽`, 'осталось денег'),
   ].join('');
   $('end-photos').innerHTML = st.photos
@@ -245,6 +245,7 @@ $('btn-play').addEventListener('click', play);
 // any night straight from the menu, from its start
 for (const b of document.querySelectorAll('#night-pick [data-night]')) {
   b.addEventListener('click', () => {
+    attract = false; // so play() doesn't start it a second time
     startNight(Number(b.dataset.night));
     play();
   });
@@ -272,6 +273,15 @@ document.addEventListener('pointerlockchange', () => {
   locked = document.pointerLockElement === canvas;
   if (locked) escHeld = false;
   if (!locked && mode === 'play' && !phoneOpen && !mini.active) pause();
+});
+// the browser refused the mouse (asked again too soon after Esc): a click on the game gets it
+document.addEventListener('pointerlockerror', () => mode === 'play' && !focusActive() && game.toastOnce('relock', 'Кликни мышью, чтобы снова крутить головой', 'info', 4));
+// a hidden tab gets no frames, so nothing would stop the music and the voices: pause the night
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) return;
+  if (mode === 'play' && !perf.benching) pause();
+  audio.setMusic(false);
+  audio.voices.stopAll();
 });
 document.addEventListener('mousemove', (e) => {
   if (mode !== 'play' || phoneOpen) return;
@@ -352,9 +362,10 @@ canvas.addEventListener('mousedown', () => {
   lock();
 });
 addEventListener('mouseup', () => (dragging = false));
-addEventListener('wheel', (e) => mode === 'play' && game.inv.select(game.inv.sel + Math.sign(e.deltaY)));
+// the wheel picks the slot, when the digit keys would
+addEventListener('wheel', (e) => mode === 'play' && !phoneOpen && !focusActive() && !(game.oleg.blackout > 0) && !game.talkLocked && game.inv.select(game.inv.sel + Math.sign(e.deltaY)));
 
-let currentActions = [];
+let currentTarget = null; // what the crosshair is on; its actions are asked for when a key is pressed
 // Esc that closed a close-up (PC, pot) or the phone is still held: re-locking the mouse now lets the browser see
 // Esc released under the lock, drop it, and the game pauses. Re-lock on its keyup instead
 let escHeld = false;
@@ -362,6 +373,7 @@ addEventListener('keydown', (e) => {
   if (e.code === 'Backquote' && !e.repeat) return perf.toggle(); // Ё: the performance meter
   if (perf.benching) return; // hands off while the benchmark runs
   if (e.code === 'KeyV' && !e.repeat && (mode === 'play' || mode === 'menu' || mode === 'end')) return nextFilter(e.shiftKey ? -1 : 1);
+  if (mode === 'orbit' && e.code === 'Escape') return pause(); // back to the menu, like «← Меню»
   if (mode !== 'play') return;
   player.keys.add(e.code);
   if (e.repeat) return;
@@ -373,7 +385,7 @@ addEventListener('keydown', (e) => {
     }
     return;
   }
-  if (k === 'KeyC' && !phoneOpen) return setPhotoMode(!photoMode);
+  if (k === 'KeyC') return setPhotoMode(phoneOpen || !photoMode); // with the phone up: «Снять (C)»
   if (photoMode && k === 'Escape') return setPhotoMode(false);
   if (k === 'KeyF') return setPhone(!phoneOpen);
   if (k === 'Escape') {
@@ -390,7 +402,7 @@ addEventListener('keydown', (e) => {
   if (k === 'KeyQ') game.useSelf();
   if (k === 'KeyG') game.inv.drop();
   const key = { KeyE: 'E', KeyR: 'R', KeyT: 'T' }[k];
-  const act = key && currentActions.find((a) => a.key === key);
+  const act = key && (currentTarget?.actions?.() ?? []).find((a) => a.key === key);
   if (act) {
     // plain actions pay here; mini-game actions pay when the game opens (game.minigame)
     if (act.cost && !act.mini && !game.spend(act.cost)) return;
@@ -412,6 +424,11 @@ addEventListener('blur', () => {
 });
 
 addEventListener('resize', () => {
+  if (!perf.benching) {
+    // zoom or another screen changes the pixel ratio (the benchmark scales it itself)
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+    fx.setPixelRatio(renderer.getPixelRatio());
+  }
   renderer.setSize(innerWidth, innerHeight);
   fx.setSize(innerWidth, innerHeight);
   filters.setSize(innerWidth, innerHeight, renderer.getPixelRatio());
@@ -431,15 +448,33 @@ function visibleChain(o) {
   for (; o; o = o.parent) if (!o.visible) return false;
   return true;
 }
+// still in the scene and shown
+function present(o) {
+  for (; o; o = o.parent) {
+    if (!o.visible) return false;
+    if (o === scene) return true;
+  }
+  return false;
+}
 let wasFocused = false;
 const focusRay = new THREE.Raycaster();
+// the ray goes through the whole world: every other frame is enough, in between the last answer stands
+// while its object is still there
+let lookObj = null, lookTarget = null, lookSkip = false;
 function findTarget() {
+  lookSkip = !lookSkip;
+  if (lookSkip && (!lookObj || (lookObj.userData.target === lookTarget && present(lookObj)))) return lookTarget;
+  lookObj = lookTarget = null;
   ray.setFromCamera(center, camera);
   for (const hit of ray.intersectObjects(pickRoots, true)) {
     if (!visibleChain(hit.object)) continue;
     if (hit.object.isSprite && !hit.object.parent?.userData.target) continue; // labels don't block
 
-    for (let o = hit.object; o; o = o.parent) if (o.userData.target) return o.userData.target;
+    for (let o = hit.object; o; o = o.parent) {
+      if (!o.userData.target) continue;
+      lookObj = o;
+      return (lookTarget = o.userData.target);
+    }
     return null; // a wall or something without a target is in the way
   }
   return null;
@@ -454,7 +489,18 @@ let drunkFx = 0;
 let blackFx = 0;
 let hudT = 0;
 
+// one exception must not stop the game: the next frame is asked for first, the error is logged once
 function frame(now) {
+  requestAnimationFrame(frame);
+  try {
+    tick(now);
+  } catch (e) {
+    if (!frame.failed) console.error(e);
+    frame.failed = true;
+  }
+}
+
+function tick(now) {
   perf.begin(now);
   const dt = Math.max(0, Math.min(0.05, (now - last) / 1000)); // never backwards (first frame)
   last = now;
@@ -475,6 +521,8 @@ function frame(now) {
     if (focusActive()) {
       // fly to the close-up and hand the mouse over to the objects
       if (locked) document.exitPointerLock?.();
+      if (photoMode) setPhotoMode(false); // the mouse works the close-up, not the camera
+      game.olegSpeed = 0; // he stands at the stove / the PC
       const f = focuser().focus;
       camera.position.lerp(f.cam.pos, Math.min(1, dt * 6));
       const q = camera.quaternion.clone();
@@ -535,12 +583,12 @@ function frame(now) {
     use.pressed = false;
     use.mx = use.my = 0;
     if (!focusActive()) hud.setUse(handHud);
-    currentActions = target?.actions?.() ?? [];
+    currentTarget = target;
     hudT -= dt;
     if (hudT <= 0 || target !== hud.lastTarget) {
       hudT = 0.1;
       hud.lastTarget = target;
-      hud.update(game, { roomName: roomAt(player.x, player.z)?.name ?? outside.zoneName(player.x, player.z), target, actions: currentActions });
+      hud.update(game, { roomName: roomAt(player.x, player.z)?.name ?? outside.zoneName(player.x, player.z), target, actions: target?.actions?.() ?? [] });
     }
     audio.setMusic(game.state.music && !game.hushed); // the music goes quiet while someone knocks
     audio.voices.update([player.x, player.z]);
@@ -562,9 +610,10 @@ function frame(now) {
   drunkFx += ((mode === 'play' ? game.oleg.drunk / 100 : 0) - drunkFx) * Math.min(1, dt * 2);
   blackFx += ((mode === 'play' && game.oleg.blackout > 0 ? 1 : 0) - blackFx) * Math.min(1, dt * 3);
   fx.set(time, drunkFx, blackFx);
-  filters.update(time, game.clock);
+  filters.update(time, game.clock, mode !== 'orbit'); // the orbit view is drawn without the filter: no screen texts
 
-  lightPool.update(dt, mode === 'play' && hud.camRect() ? [camera, doorCam] : [mode === 'orbit' ? orbitCam : camera]);
+  const camR = mode === 'play' && hud.camRect(); // the phone's door camera on screen
+  lightPool.update(dt, camR ? [camera, doorCam] : [mode === 'orbit' ? orbitCam : camera]);
   look?.update(dt, time);
   perf.renderStart();
   if (!perf.cfg.render) { /* benchmark: logic only */ }
@@ -576,7 +625,7 @@ function frame(now) {
     if (mode === 'play') snap();
   }
 
-  const r = perf.cfg.render && mode === 'play' && hud.camRect();
+  const r = perf.cfg.render && camR;
   if (r) {
     game.camSeen = game.visitor; // Oleg is looking at the door camera: now he knows who is there
     doorCam.aspect = r.width / r.height;
@@ -595,7 +644,6 @@ function frame(now) {
     camCtx.drawImage(canvas, r.left * pr, r.top * pr, w, h, 0, 0, w, h);
   }
   perf.end(now);
-  requestAnimationFrame(frame);
 }
 
 // ---------- boot ----------
@@ -637,5 +685,13 @@ if (params.has('play') || params.has('bench')) {
 } else if (attract) {
   game.olegPos = [99, 99];
   for (let s = 0; s < 10; s += 0.05) game.update(0.05); // the guys have settled in by the time the title shows
+}
+// the menu works from here on: index.html ships its buttons disabled («Загрузка…») while the game loads
+$('btn-play').textContent = `Начать ночь ${game.night}`;
+for (const b of document.querySelectorAll('#menu button')) b.disabled = false;
+if (isTouchOnly) {
+  $('btn-play').disabled = true;
+  document.querySelectorAll('#night-pick button').forEach((b) => (b.disabled = true));
+  $('mobile-note').hidden = false;
 }
 requestAnimationFrame(frame);

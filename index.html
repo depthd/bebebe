@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>5 ночей на хате у Олега</title>
+    <link rel="icon" href="data:," />
     <script>if (/[?&]lab(&|=|$)/.test(location.search)) location.replace('lab.html');</script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -36,8 +37,10 @@
           <div class="stat"><label>Силы</label><div class="bar energy"><i id="bar-energy"></i></div></div>
         </div>
       </section>
-      <div class="toasts" id="toasts"></div>
-      <div class="door-alert" id="door-alert" hidden>Стучат в дверь · F — камера</div>
+      <div class="top-mid" id="top-mid">
+        <div class="toasts" id="toasts"></div>
+        <div class="door-alert" id="door-alert" hidden>Стучат в дверь · F — камера</div>
+      </div>
       <div class="crosshair"></div>
       <div class="prompt" id="prompt"></div>
       <div class="use" id="use" hidden><span id="use-label"></span><div class="bar"><i id="use-bar"></i></div></div>
@@ -80,18 +83,18 @@
         <div class="menu-lcd"><div class="lcd"><span class="ghost">88:88</span><b>22:00</b></div><small>до 06:00</small></div>
         <p class="lead">Ты — Олег, у тебя на хате пацаны. Тусуйся сам и держи общее веселье выше нуля, хату — целой, кота — живым.</p>
         <div class="menu-buttons">
-          <button id="btn-play" class="primary" type="button">Начать ночь 1</button>
-          <button id="btn-orbit" type="button">Посмотреть хату сверху</button>
-          <button id="btn-filter" type="button">Глаза Олега</button>
+          <button id="btn-play" class="primary" type="button" disabled>Загрузка…</button>
+          <button id="btn-orbit" type="button" disabled>Посмотреть хату сверху</button>
+          <button id="btn-filter" type="button" disabled>Глаза Олега</button>
         </div>
         <div class="night-pick" id="night-pick">
           <span>Сразу в ночь</span>
-          <button type="button" data-night="1">1</button><button type="button" data-night="2">2</button><button type="button" data-night="3">3</button><button type="button" data-night="4">4</button><button type="button" data-night="5">5</button>
+          <button type="button" data-night="1" disabled>1</button><button type="button" data-night="2" disabled>2</button><button type="button" data-night="3" disabled>3</button><button type="button" data-night="4" disabled>4</button><button type="button" data-night="5" disabled>5</button>
         </div>
         <p class="mobile-note" id="mobile-note" hidden>Играть — с компа (мышь + клавиатура). С телефона можно посмотреть хату сверху.</p>
         <dl class="controls">
           <div><dt>WASD</dt><dd>ходить, Shift — бегом</dd></div>
-          <div><dt>E / R / T</dt><dd>действия (подсказка у прицела)</dd></div>
+          <div><dt>E / R / T</dt><dd>действия (подсказка у прицела), просто T — потанцевать под музыку</dd></div>
           <div><dt>1–4</dt><dd>слот инвентаря, Q — выпить самому</dd></div>
           <div><dt>F</dt><dd>телефон: камера у двери и доставка</dd></div>
           <div><dt>V</dt><dd>фильтр «глаза Олега»: VHS, бодикам, PS1…</dd></div>
