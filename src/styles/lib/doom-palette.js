@@ -1,8 +1,8 @@
-// The doom style's 256 colours (scripts/assets/styles/doom_palette.json, shared with the Blender pass):
+// The doom style's 256 colours (src/styles/doom/palette.json, written by scripts/assets/styles/doom_palette.mjs):
 // nearest-colour lookups in CIELAB through a precomputed 32^3 table, image quantisation (optionally with
 // a 4x4 ordered dither for the digitised-photo sprites), and the 3D LUT for the palette post pass.
 import * as THREE from 'three';
-import DATA from '../../../scripts/assets/styles/doom_palette.json';
+import DATA from '../doom/palette.json';
 
 export const PALETTE = DATA.ramps.flatMap((r) => r.colors).map((h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)));
 export const ANCHORS = DATA.anchors;

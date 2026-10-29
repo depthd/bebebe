@@ -74,7 +74,7 @@ function nextFilter(step = 1) {
   filterNameT = setTimeout(() => n.classList.remove('on'), 1600);
 }
 game.attachOutside(outside);
-// art-style prototypes (?style=<id>, src/styles/, docs/STYLE.md): nothing loads without the parameter
+// art-style prototypes (?style=<id>, src/styles/): nothing loads without the parameter
 const look = params.has('style') ? await (await import('./styles/index.js')).applyStyle(params.get('style'), { scene, renderer, camera, composer: fx.composer, apt, furn, outside, game }) : null;
 const hud = createHUD({ onBuy: (cart) => game.buyCart(cart) });
 // close-up hands-on scenes (pelmeni): the mouse is free, the camera flies in, the world slows down

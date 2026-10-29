@@ -1,5 +1,5 @@
 // Art-style prototypes, `?style=<id>`: a whole-game look laid over the normal build, to compare looks
-// before one becomes the game's (docs/STYLE.md). Nothing here loads without the URL parameter.
+// before one becomes the game's. Nothing here loads without the URL parameter.
 // A style is src/styles/<id>.js with `export default { name, apply(ctx) }`; apply may return
 // { update(dt, time) }, called every frame before the picture is drawn.
 // ctx:

@@ -1,7 +1,6 @@
 // Art style "toon" (?style=toon): the flat as a frame of Масяня. Flat juicy colours, three steps of
 // light instead of smooth shading, dark ink round everything that stands in a room, photo heads as
-// stickers (white rim, ink outline) on the cartoon bodies. Design: the art-direction panel's spec
-// (docs/STYLE.md); engine side only, on today's procedural world.
+// stickers (white rim, ink outline) on the cartoon bodies. Engine side only, on today's procedural world.
 //   materials  MeshStandard -> MeshToon (3-band gradient, 0.35 floor), +15% saturation, colours pulled
 //              half-way to a Soviet-cartoon palette, the darkest band tinted blue-violet
 //   textures   canvas patterns redrawn in 4-6 flat colours, wallpaper motifs calmed down
