@@ -2,9 +2,9 @@
 // puddles, broken things, the stove, the grill, the cat toy and Oleg himself.
 import * as THREE from 'three';
 import { TUNE } from '../config.js';
-import { TOY_SPOTS, VISITOR_SPOT, CAT_SPOTS, SPOTS, BOUNDS, BALCONY, roomAt } from '../world/layout.js';
+import { TOY_SPOTS, VISITOR_SPOT, CAT_SPOTS, SPOTS, BOUNDS, BALCONY, START, roomAt } from '../world/layout.js';
 import { makePerson, makePuddle, makeToy, makeBottle, makePlate, makeBrokenMark, makeBucket } from '../world/figures.js';
-import { Friend, Cat, clamp, rand, makeBody } from './friends.js';
+import { Friend, Cat, clamp, rand } from './friends.js';
 import { particles } from '../world/particles.js';
 import { Interactions } from './interact.js';
 import { Cooking } from './cooking.js';
@@ -29,8 +29,8 @@ export const ITEMS = {
 };
 
 const FRIEND_IDS = ['alexey', 'lyokha', 'kirill', 'temych'];
-// "Пиво ×4, Пиво ×4, Пельмени" -> "Пиво ×4 ×2, Пельмени"
-const summarize = (titles) => Object.entries(titles.reduce((m, t) => ((m[t] = (m[t] ?? 0) + 1), m), {})).map(([t, n]) => (n > 1 ? `${t} — ${n} шт` : t)).join(', ');
+// "Пиво ×4, Пиво ×4, Пельмени" -> "Пиво ×4 — 2 шт., Пельмени"
+const summarize = (titles) => Object.entries(titles.reduce((m, t) => ((m[t] = (m[t] ?? 0) + 1), m), {})).map(([t, n]) => (n > 1 ? `${t} — ${n} шт.` : t)).join(', ');
 const BREAKABLE = ['stenka', 'ficus', 'microwave', 'sisterDesk', 'kitchenTable', 'wardrobe', 'loftBed', 'olegBed', 'sofa'];
 
 class Inventory {
@@ -46,12 +46,15 @@ class Inventory {
   has(type) {
     return this.slots.includes(type);
   }
+  // a free slot? if not, say so
+  hasRoom() {
+    if (this.slots.includes(null)) return true;
+    this.game.toast('Руки заняты — освободи слот (G — положить)', 'warn');
+    return false;
+  }
   add(type, portion = 1) {
+    if (!this.hasRoom()) return false;
     const i = this.slots.indexOf(null);
-    if (i < 0) {
-      this.game.toast('Руки заняты — освободи слот (G — выбросить)', 'warn');
-      return false;
-    }
     this.slots[i] = type;
     this.portion[i] = portion;
     if (!this.slots[this.sel]) this.sel = i;
@@ -84,10 +87,13 @@ class Inventory {
       else this.game.toastOnce('catOut', 'Кота тут не отпустишь — потеряется. Неси домой', 'warn', 3);
       return;
     }
+    const home = this.game.inFlat(...this.game.olegPos);
+    // the mouse and the bucket aren't left on the landing or in the yard: they'd be lost
+    if (!home && ['toy', 'bucket', 'water'].includes(item)) return void this.game.toastOnce('dropOut', 'Тут не бросишь — потеряется. Неси домой', 'warn', 3);
     this.slots[this.sel] = null;
     if (item === 'shower') return this.game.hands.returnShower();
-    // outside the flat there's no fridge to put it back in: in the shop it goes back on the shelf
-    if (this.game.outside && roomAt(...this.game.olegPos) == null) {
+    // outside the flat (the landing too) there's no fridge to put it back in: in the shop it goes back on the shelf
+    if (this.game.outside && !home) {
       if (this.game.shop?.putBack(item)) return;
       if (['beer', 'vodka', 'food', 'pelmeni'].includes(item)) return;
     }
@@ -152,7 +158,6 @@ export class Game {
   vibeTick(dt) {
     const V = TUNE.vibe, o = this.oleg;
     const c = this.company();
-    this.vibe = c.length;
     o.dance = Math.max(0, (o.dance ?? 0) - dt);
     if (c.length) {
       this.aloneT = 0;
@@ -394,27 +399,6 @@ export class Game {
     }
   }
 
-  // problem frequency: grows each night, and every night starts calm and ramps up (TUNE.warmup)
-  // swap every guy's look between 'box' (cube heads) and 'sprite' (Doom-style billboards)
-  restyle(style) {
-    this.style = style;
-    for (const f of this.friends) {
-      const old = f.figure;
-      const nf = makePerson({ ...f.def, style, faceId: f.id });
-      nf.root.position.copy(old.root.position);
-      nf.root.rotation.copy(old.root.rotation);
-      nf.root.userData = old.root.userData;
-      nf.setPose(old.pose, f.y);
-      if (f.problem) nf.setStatus(f.problem.short);
-      this.dynamic.remove(old.root);
-      this.dynamic.add(nf.root);
-      f.figure = nf;
-      f.rag?.disable();
-      f.rag = makeBody(nf.rig);
-      f.hookBody();
-    }
-  }
-
   // this night's setup (TUNE.NIGHTS)
   get N() {
     return TUNE.NIGHTS[Math.min(this.night, TUNE.NIGHTS.length) - 1];
@@ -426,6 +410,7 @@ export class Game {
     return this.N.events.includes(id);
   }
 
+  // problem frequency: grows each night, and every night starts calm and ramps up (TUNE.warmup)
   get diff() {
     const W = TUNE.warmup;
     const ramp = Math.min(1, Math.max(0, (this.state.t - W.calm) / W.ramp));
@@ -442,6 +427,14 @@ export class Game {
     this.leading = null;
     if (this.hands?.showerHeld()) this.hands.returnShower();
     this.reactCd = 0;
+    this.cheersCd = this.laughCd = this.olegSlipCd = 0;
+    this.aloneT = 0;
+    this.stuck = {};
+    this.entranceCloseT = 0;
+    this.hands.patLast = -9;
+    // main.js puts him at the start: his body mustn't fly there from where the last night ended
+    this.olegPos = [START.x, START.z];
+    this.lastOleg = null;
     this.koch = null;
     this.kochT = null;
     const S = TUNE.start, NS = this.N;
@@ -468,8 +461,11 @@ export class Game {
     this.toastKeys = {};
     this.over = null;
     this.orders = [];
-    this.visitor?.figure && this.dynamic.remove(this.visitor.figure.root);
-    for (const l of this.leaving ?? []) this.dynamic.remove(l.figure.root);
+    for (const fig of [this.visitor?.figure, ...(this.leaving ?? []).map((l) => l.figure)]) {
+      if (!fig) continue;
+      this.dynamic.remove(fig.root);
+      fig.dispose?.();
+    }
     this.leaving = [];
     this.visitorGap = 0;
     this.visitor = null;
@@ -483,6 +479,7 @@ export class Game {
     this.pc?.reset();
     if (this.cooking) {
       this.cooking.end(); // a night can end in the middle of the pelmeni close-up
+      this.cooking.potOnStove(); // pelmeni spilled into the sink go back too
       this.cooking.pot.visible = false;
     }
     this.living?.reset();
@@ -495,13 +492,17 @@ export class Game {
     for (const f of this.friends) {
       f.rag?.disable();
       this.dynamic.remove(f.figure.root);
+      f.figure.dispose?.();
     }
     this.friends = FRIEND_IDS.map((id) => new Friend(this, id));
     for (const f of this.friends) {
       this.dynamic.add(f.figure.root);
       f.figure.root.userData.target = { name: f.name, friend: f, info: () => (f.problem ? f.problem.text : f.statusText), actions: () => f.actions(this) };
     }
-    if (this.cat) this.dynamic.remove(this.cat.figure.root);
+    if (this.cat) {
+      this.dynamic.remove(this.cat.figure.root);
+      this.cat.figure.dispose?.();
+    }
     this.cat = new Cat(this);
     this.cat.figure.root.userData.target = { name: 'Кот', cat: this.cat, info: () => this.cat.statusText, actions: () => this.cat.actions(this) };
     this.dynamic.add(this.cat.figure.root);
@@ -620,12 +621,13 @@ export class Game {
     if (!this.inv.add('toy')) return;
     this.toy.visible = false;
     this.toyLoose = false;
-    this.cat.playLeft = 0;
+    if (this.cat.playLeft > 0) this.cat.endPlay(false);
   }
 
   // the mouse leaves Oleg's hand: thrown along `dir`, or just dropped in front of the cat
   throwToy(from, dir, speed = TUNE.cat.throwSpeed) {
     if (!this.inv.has('toy')) return;
+    if (!this.inFlat(...this.olegPos)) return void this.toastOnce('dropOut', 'Тут не бросишь — потеряется. Неси домой', 'warn', 3);
     this.inv.remove('toy');
     this.toy.position.copy(from);
     this.toy.position.y = Math.max(0.3, from.y);
@@ -761,13 +763,14 @@ export class Game {
     const out = Math.sign((sash?.z ?? BALCONY.z0) - (BALCONY.z0 + BALCONY.z1) / 2) || -1; // away from the flat
     const from = toss?.from ?? [c.pos[0], (CAT_SPOTS.catRail.y ?? 1) + 0.1, sash?.z ?? c.pos[1]];
     c.startFall(from, toss?.vel ?? [0, 0.8, out * 1.1]);
+    const fall = c.fall;
     this.state.totalFun -= TUNE.cat.fallPenalty;
     for (const f of this.friends) f.fun -= 15;
     this.alert('КОТ ВЫПАЛ С БАЛКОНА!', 'Балкон');
     this.pending.push({
       at: this.state.t + 20,
       fn: () => {
-        if (!c.gone) return; // Oleg already went down and got him
+        if (!c.gone || c.fall !== fall) return; // Oleg already went down and got him (a later fall has its own timer)
         c.takenAway(); // the neighbour picked him up in the yard
         this.queueVisitor({
           type: 'cat', name: 'Соседка с котом', shirt: '#8e6c8a', patience: 30,
@@ -779,7 +782,7 @@ export class Game {
             c.path = null;
             c.mode = 'idle';
             c.place(CAT_SPOTS.catHall);
-            this.toast('Соседка принесла кота. Живой! Третий этаж, кусты', 'good');
+            this.toast('Соседка принесла кота. Живой! Второй этаж, кусты', 'good');
           },
           onTimeout: () => this.toast('Соседка ушла с котом… придёт ещё', 'bad'),
           retry: true,
@@ -919,28 +922,32 @@ export class Game {
       const starters = this.kochCandidates().filter((c) => c !== 'oleg');
       if (!starters.length) return;
       const who = pick(starters);
-      this.koch = { step: 0 };
+      const k = (this.koch = { step: 0 });
       // sometimes he goes out on the balcony and yells it out of the window, for the whole yard to hear
       if (Math.random() < K.balconyChance && !who.event && who.mode !== 'walk') {
-        this.koch.waiting = true;
+        k.waiting = who;
         who.endActivity(true);
-        const ok = who.walkTo(SPOTS.balcony, () => {
-          if (!this.koch?.waiting) return;
-          this.koch.waiting = false;
+        const ok = who.walkTo(SPOTS.balcony, (k.arrive = () => {
+          if (this.koch !== k || !k.waiting) return;
+          k.waiting = false;
           this.living.setWindow(true, who);
           who.figure.say('КООООЧ НА ВЕСЬ ДВОР!', 2.5);
           this.state.noise += K.balconyNoise;
           this.kochShout(who);
-        });
+        }));
         if (ok) return;
-        this.koch.waiting = false;
+        k.waiting = false;
       }
       this.kochShout(who);
       return;
     }
     // the next one answers when the current shout is mostly over
     const k = this.koch;
-    if (k.waiting) return;
+    if (k.waiting) {
+      // pulled away on his way to the balcony (a toast, Oleg leads him off): no shout, the chain is over
+      if (k.waiting.mode !== 'walk' || k.waiting.onArrive !== k.arrive) this.koch = null;
+      return;
+    }
     const dur = Number.isFinite(k.h?.audio.duration) ? k.h.audio.duration : 2;
     if (st.t - k.start < Math.min(dur, 3) * 0.7 + k.gap && k.h?.playing !== false) return;
     const pool = this.kochCandidates().filter((c) => c !== k.last);
@@ -1058,13 +1065,15 @@ export class Game {
     st.neighborCd = TUNE.noise.cooldown * 1.5;
     if (paid < bribe) {
       st.hut -= 20;
-      this.toast(`Денег на взятку не хватило (${paid}₽ из ${bribe}₽). Протокол, хата −20`, 'bad');
-    } else this.toast(`${forced ? 'Пришлось' : 'Дал'} взятку ментам: −${bribe}₽`, 'bad');
+      this.toast(`Денег на взятку не хватило (${paid} ₽ из ${bribe} ₽). Протокол, хата −20`, 'bad');
+    } else this.toast(`${forced ? 'Пришлось дать' : 'Дал'} взятку ментам: −${bribe} ₽`, 'bad');
   }
 
   // the phone's cart: { id: count } — all of it in one delivery
   buyCart(cart) {
-    for (const [id, n] of Object.entries(cart)) for (let i = 0; i < n; i++) this.buy(id, true);
+    const short = [];
+    for (const [id, n] of Object.entries(cart)) for (let i = 0; i < n; i++) if (!this.buy(id, true)) short.push(TUNE.shop.find((s) => s.id === id)?.title ?? id);
+    if (short.length) this.toast(`Не хватило денег: ${summarize(short)}`, 'bad');
   }
 
   buy(id, quiet = false) {
@@ -1168,6 +1177,8 @@ export class Game {
           return [{
             key: 'E', text: 'Слить воду и снять', cost: TUNE.cost.drain, mini: true,
             run: () =>
+              // the pelmeni go into Oleg's hands: a free slot first
+              this.inv.hasRoom() &&
               this.startFocus('drain', TUNE.cost.drain, (score) => {
                 this.stove = { phase: 'idle', t: 0 };
                 if (score <= 0) return this.toast('Все пельмени уплыли в раковину', 'bad');
@@ -1331,7 +1342,7 @@ export class Game {
         this.stove = { phase: 'ready', t: 0 };
         this.alert('Пельмени сварились — снимай!', 'Кухня');
       }
-    } else if (this.stove.phase === 'ready') {
+    } else if (this.stove.phase === 'ready' && this.cooking.focus?.kind !== 'drain') {
       this.stove.t += dt;
       if (this.stove.t >= S.burnAfter) {
         this.stove = { phase: 'idle', t: 0 };
@@ -1394,7 +1405,9 @@ export class Game {
       l.figure.root.position.x += l.dir[0] * 1.2 * dt;
       l.figure.root.position.z += l.dir[1] * 1.2 * dt;
       l.figure.update(dt, { walking: true, speed: 1.2 });
-      if (l.t <= 0) this.dynamic.remove(l.figure.root);
+      if (l.t > 0) continue;
+      this.dynamic.remove(l.figure.root);
+      l.figure.dispose?.();
     }
     this.leaving = (this.leaving ?? []).filter((l) => l.t > 0);
     this.visitorGap = Math.max(0, (this.visitorGap ?? 0) - dt);
