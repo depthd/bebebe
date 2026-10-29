@@ -51,16 +51,19 @@ function vSlice(geo, v0, v1) {
 
 // ---------- props held in a hand (built along +z, origin at the grip) ----------
 
+// goods.js shares the bottle materials: marked so a figure's dispose() keeps them
+const keepMats = (g) => (g.traverse((o) => o.material && (o.material.userData.shared = true)), g);
+
 const PROPS = {
   // the same blocky bottles as on the table and the shop shelves, laid along +z (neck forward)
   beer() {
-    const b = blockyBottle('beer');
+    const b = keepMats(blockyBottle('beer'));
     b.rotation.x = Math.PI / 2;
     b.position.z = -0.1;
     return new THREE.Group().add(b);
   },
   vodka() {
-    const b = blockyBottle('vodka');
+    const b = keepMats(blockyBottle('vodka'));
     b.rotation.x = Math.PI / 2;
     b.position.z = -0.12;
     return new THREE.Group().add(b);
@@ -742,8 +745,8 @@ export function createRig(body, { m, sk, style }) {
         spring(leg.knee.rotation, 'x', p.legs[i].knee, sdt, 1.4);
       }
       const k = 1 - Math.exp(-dt * 16 * (1 - 0.5 * d));
-      body.parent?.updateMatrixWorld(true);
-      body.updateMatrixWorld(true);
+      if (body.parent) body.parent.updateMatrixWorld(true); // updates the body too
+      else body.updateMatrixWorld(true);
 
       // ---- arms: FK blended with IK
       for (const [i, arm] of arms.entries()) {

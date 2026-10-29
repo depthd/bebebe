@@ -485,7 +485,10 @@ export class Game {
     this.living?.reset();
     this.shop?.reset();
     this.placeBucket(...this.bucketHome);
-    for (const p of this.puddles ?? []) this.dynamic.remove(p);
+    for (const p of this.puddles ?? []) {
+      this.dynamic.remove(p);
+      p.dispose?.();
+    }
     this.puddles = [];
     for (const it of Object.values(this.furn.items)) this.setBroken(it, false);
 
@@ -587,6 +590,7 @@ export class Game {
   removePuddle(p) {
     if (!this.puddles.includes(p)) return;
     this.dynamic.remove(p);
+    p.dispose?.(); // its own material (each puddle fades on its own); the geometry is shared
     this.puddles = this.puddles.filter((q) => q !== p);
     this.state.hut += TUNE.hut.clean;
     this.olegHelped();

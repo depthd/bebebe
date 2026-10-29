@@ -34,6 +34,48 @@ function alertTexture() {
 }
 import { skinMaterials } from './skins.js';
 
+// Things every figure uses are made once and marked userData.shared: dispose() keeps them.
+const shared = (x) => ((x.userData.shared = true), x);
+let badgeMat = null;
+const alertMaterial = () => (badgeMat ??= shared(new THREE.SpriteMaterial({ map: alertTexture(), transparent: true, depthTest: false, sizeAttenuation: false })));
+
+// one texture per mood picture, shared by all figures; the cube head (bg) gets the hair colour behind the cut-out
+const moodTextures = {};
+function moodTexture(who, state, f, bg = null) {
+  const key = `${who}_${state}${bg ? '|' + bg : ''}`;
+  if (!moodTextures[key]) {
+    let c = f.canvas;
+    if (bg) {
+      const b = document.createElement('canvas');
+      b.width = c.width;
+      b.height = c.height;
+      const g = b.getContext('2d');
+      g.fillStyle = bg;
+      g.fillRect(0, 0, b.width, b.height);
+      g.drawImage(c, 0, 0);
+      c = b;
+    }
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    moodTextures[key] = shared(tex);
+  }
+  return moodTextures[key];
+}
+
+// Frees what a figure made for itself: the geometry of every mesh under it (sprites share
+// three.js's own) and its materials with their textures, except the shared ones.
+function disposeTree(root) {
+  const mats = new Set();
+  root.traverse((o) => {
+    if (o.isMesh) o.geometry.dispose();
+    for (const m of [o.material ?? []].flat()) if (!m.userData.shared) mats.add(m);
+  });
+  for (const m of mats) {
+    if (m.map && !m.map.userData.shared) m.map.dispose();
+    m.dispose();
+  }
+}
+
 export function textSprite(text, { bg = 'rgba(20,18,24,0.78)', fg = '#fff', size = 40, scale = 0.001 } = {}) {
   const c = document.createElement('canvas');
   const g = c.getContext('2d');
@@ -89,7 +131,7 @@ function makeTags(root, name, label) {
         bubble = null;
       }
       if (text) {
-        bubble = new THREE.Sprite(new THREE.SpriteMaterial({ map: alertTexture(), transparent: true, depthTest: false, sizeAttenuation: false }));
+        bubble = new THREE.Sprite(alertMaterial());
         bubble.scale.set(0.055, 0.055, 1);
         bubble.renderOrder = 11;
         root.add(bubble);
@@ -180,7 +222,6 @@ function makeBoxPerson(opts) {
 
   // the photo / drawn face, used for moods that have no picture yet
   const legacy = { map: head.isSprite ? head.material.map : faceMat.map, aspect: faceAspect(who) };
-  const moodTex = {};
   let faceState;
   const setFace = (state) => {
     if (!mood) return;
@@ -202,30 +243,16 @@ function makeBoxPerson(opts) {
     }
     moodFace(who, state).then((f) => {
       if (faceState !== state) return;
-      if (!moodTex[state]) {
-        let c = f.canvas;
-        if (!head.isSprite) {
-          // the cube face needs an opaque picture: hair colour behind the cut-out
-          const bg = document.createElement('canvas');
-          bg.width = c.width;
-          bg.height = c.height;
-          const g = bg.getContext('2d');
-          g.fillStyle = hair;
-          g.fillRect(0, 0, bg.width, bg.height);
-          g.drawImage(c, 0, 0);
-          c = bg;
-        }
-        moodTex[state] = new THREE.CanvasTexture(c);
-        moodTex[state].colorSpace = THREE.SRGBColorSpace;
-      }
+      // the cube face needs an opaque picture: hair colour behind the cut-out
+      const tex = moodTexture(who, state, f, head.isSprite ? null : hair);
       if (head.isSprite) {
-        head.material.map = moodTex[state];
+        head.material.map = tex;
         head.material.needsUpdate = true;
         head.scale.set(HH * f.aspect, HH, 1);
         head.position.y = -0.1; // mood heads come with their own short neck: sit it in the collar
         rig.neckMesh.visible = false;
       } else {
-        faceMat.map = moodTex[state];
+        faceMat.map = tex;
         faceMat.needsUpdate = true;
       }
     });
@@ -303,6 +330,11 @@ function makeBoxPerson(opts) {
     get pose() {
       return rig.pose;
     },
+    // when he's gone for good (a new night, a visitor walked off)
+    dispose() {
+      disposeTree(root);
+      legacy.map.dispose(); // off the head while a mood picture shows
+    },
   };
 }
 
@@ -327,11 +359,11 @@ export function makeCat({ label = true } = {}) {
     skull.add(new THREE.Mesh(new THREE.SphereGeometry(0.009, 6, 4).translate(x, 0.01, 0.092), mat('#050505')));
   }
   // his real face (src/assets/faces/cat_default.png): a flat head that turns to the camera, like the guys
+  let disposed = false;
   if (hasMoodFaces('cat')) {
     moodFace('cat', 'default').then((f) => {
-      const tex = new THREE.CanvasTexture(f.canvas);
-      tex.colorSpace = THREE.SRGBColorSpace;
-      const face = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, alphaTest: 0.05 }));
+      if (disposed) return;
+      const face = new THREE.Sprite(new THREE.SpriteMaterial({ map: moodTexture('cat', 'default', f), transparent: true, alphaTest: 0.05 }));
       const fh = 0.27;
       face.scale.set(fh * f.aspect, fh, 1);
       face.center.set(0.5, 0.35);
@@ -372,7 +404,7 @@ export function makeCat({ label = true } = {}) {
         bubble = null;
       }
       if (!text) return;
-      bubble = new THREE.Sprite(new THREE.SpriteMaterial({ map: alertTexture(), transparent: true, depthTest: false, sizeAttenuation: false }));
+      bubble = new THREE.Sprite(alertMaterial());
       bubble.scale.set(0.05, 0.05, 1);
       bubble.renderOrder = 11;
       bubble.position.y = 0.85;
@@ -395,16 +427,23 @@ export function makeCat({ label = true } = {}) {
       tail.rotation.z = Math.sin(t * (crouch > 0 || run ? 9 : 3)) * (crouch > 0 ? 0.25 : 0.4);
       tail.rotation.x = run ? -1.1 : -0.6;
     },
+    dispose() {
+      disposed = true;
+      disposeTree(root);
+    },
   };
 }
 
+// one geometry for all puddles; the material is each puddle's own (it fades as it's wiped up)
+let puddleGeo = null;
 export function makePuddle(x, z) {
   const mesh = new THREE.Mesh(
-    new THREE.CircleGeometry(0.28, 16).rotateX(-Math.PI / 2),
+    (puddleGeo ??= new THREE.CircleGeometry(0.28, 16).rotateX(-Math.PI / 2)),
     new THREE.MeshStandardMaterial({ color: '#9aa53a', roughness: 0.15, transparent: true, opacity: 0.85 }),
   );
   mesh.scale.set(1 + Math.random() * 0.4, 1, 0.7 + Math.random() * 0.4);
   mesh.position.set(x, 0.008 + Math.random() * 0.002, z);
+  mesh.dispose = () => mesh.material.dispose();
   return mesh;
 }
 
@@ -446,11 +485,11 @@ export function makePlate() {
   return g;
 }
 
-// Broken marker: a crooked red cross floating over the item
+// Broken marker: a crooked red cross floating over the item (all marks share the bars and the red)
+let mark = null;
 export function makeBrokenMark() {
+  mark ??= { red: new THREE.MeshBasicMaterial({ color: '#ff3b30' }), bars: [Math.PI / 4, -Math.PI / 4].map((a) => new THREE.BoxGeometry(0.3, 0.05, 0.05).rotateZ(a)) };
   const g = new THREE.Group();
-  const red = new THREE.MeshBasicMaterial({ color: '#ff3b30' });
-  g.add(new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.05, 0.05).rotateZ(Math.PI / 4), red));
-  g.add(new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.05, 0.05).rotateZ(-Math.PI / 4), red));
+  for (const bar of mark.bars) g.add(new THREE.Mesh(bar, mark.red));
   return g;
 }

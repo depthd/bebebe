@@ -68,13 +68,17 @@ function partTexture(id, pieces, flip = false) {
   return tex;
 }
 
-const matOf = (id, pieces, flip) => new THREE.MeshStandardMaterial({ map: partTexture(id, pieces, flip), roughness: 0.9 });
+// built once per skin and shared by everyone wearing it: marked so a figure's dispose() keeps them
+const shared = (m) => ((m.userData.shared = true), m);
+const matOf = (id, pieces, flip) => shared(new THREE.MeshStandardMaterial({ map: partTexture(id, pieces, flip), roughness: 0.9 }));
+const built = {};
 
 // Per-face materials for the box body, in BoxGeometry order [+x, -x, +y, -y, +z(front), -z(back)].
 export function skinMaterials(id) {
   const s = SKINS[id];
   if (!s) return null;
-  const dark = new THREE.MeshStandardMaterial({ color: '#1c1c1e', roughness: 0.9 });
+  if (built[id]) return built[id];
+  const dark = shared(new THREE.MeshStandardMaterial({ color: '#1c1c1e', roughness: 0.9 }));
   const side = matOf(id, s.torsoSide);
   const arm = matOf(id, s.armFront);
   const armBack = matOf(id, s.armBack);
@@ -83,7 +87,7 @@ export function skinMaterials(id) {
     const back = matOf(id, s[`legBack${k}`]);
     return [front, front, dark, dark, front, back];
   });
-  return {
+  return (built[id] = {
     torso: [side, side, dark, dark, matOf(id, s.torsoFront), matOf(id, s.torsoBack)],
     arm: [arm, arm, dark, dark, arm, armBack],
     legs,
@@ -92,7 +96,7 @@ export function skinMaterials(id) {
       front: matOf(id, s.headFront),
       sides: [matOf(id, s.headSide, true), matOf(id, s.headSide)],
       back: matOf(id, s.headBack),
-      top: new THREE.MeshStandardMaterial({ color: s.hairTop, roughness: 0.9 }),
+      top: shared(new THREE.MeshStandardMaterial({ color: s.hairTop, roughness: 0.9 })),
     },
-  };
+  });
 }
