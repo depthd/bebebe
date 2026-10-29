@@ -17,7 +17,7 @@ export const SKINS = [
   { name: 'USP-S | Кортекс', price: 150, rarity: 1, gun: 'pistol', color: '#d8d8d8' },
   { name: 'AK-47 | Сланец', price: 280, rarity: 2, gun: 'rifle', color: '#5b6066' },
   { name: 'M4A1-S | Ночной ужас', price: 520, rarity: 2, gun: 'rifle', color: '#5a3d8c' },
-  { name: 'AWP | Атеерис', price: 900, rarity: 3, gun: 'sniper', color: '#e05a8a' },
+  { name: 'AWP | Атерис', price: 900, rarity: 3, gun: 'sniper', color: '#e05a8a' },
   { name: 'AK-47 | Красная линия', price: 1600, rarity: 3, gun: 'rifle', color: '#b3242a' },
   { name: 'Desert Eagle | Кровавая паутина', price: 2800, rarity: 4, gun: 'pistol', color: '#a3121c' },
   { name: 'AWP | Азимов', price: 5200, rarity: 4, gun: 'sniper', color: '#f2f2f2' },
@@ -161,6 +161,10 @@ export class PC {
 
   buy(i, by) {
     const g = this.game, s = SKINS[i];
+    if (this.spin) {
+      if (!by) g.toastOnce('pcSpin', 'Подожди, колесо ещё крутится', 'warn', 2);
+      return false;
+    }
     if (g.state.money < s.price) {
       if (!by) g.toastOnce('pcMoney', 'Не хватает денег', 'warn', 2);
       return false;
@@ -201,17 +205,33 @@ export class PC {
     const T = Math.PI * 2;
     const land = win ? rand(0.03, 0.97) * p * T : p * T + rand(0.03, 0.97) * (1 - p) * T;
     const from = this.angle % T;
-    this.spin = { t: 0, dur: 3.4, from, to: T * 4 + land, win, by, p, lastTick: 0 };
+    // the stake and the target are fixed when it starts
+    this.spin = { t0: this.game.state.t, dur: 3.4, from, to: T * 4 + land, win, by, p, lastTick: 0, own: this.sel, goal: this.goal };
     this.result = null;
+  }
+
+  // the wheel runs on the game clock, so it stops (and a guy gets up) also when nobody draws it: the title
+  // screen, a fast-forward
+  tickSpin() {
+    const s = this.spin;
+    if (!s) return;
+    const k = Math.min(1, (this.game.state.t - s.t0) / s.dur), e = 1 - Math.pow(1 - k, 3);
+    this.angle = s.from + (s.to - s.from) * e;
+    const tick = Math.floor(this.angle / 0.35);
+    if (tick !== s.lastTick && k < 0.95) {
+      s.lastTick = tick;
+      if (this.focus || this.near()) this.game.sfx.click();
+    }
+    if (k >= 1) this.endSpin();
   }
 
   endSpin() {
     const g = this.game, s = this.spin;
     this.spin = null;
-    const ownI = this.skins[this.sel];
-    const goal = SKINS[this.goal];
-    if (s.win) this.skins[this.sel] = this.goal;
-    else this.skins.splice(this.sel, 1);
+    const ownI = this.skins[s.own];
+    const goal = SKINS[s.goal];
+    if (s.win) this.skins[s.own] = s.goal;
+    else this.skins.splice(s.own, 1);
     this.sel = Math.max(0, Math.min(this.sel, this.skins.length - 1));
     this.result = { win: s.win, name: s.win ? goal.name : SKINS[ownI].name, t: 2.5 };
     this.fixGoal();
@@ -237,7 +257,7 @@ export class PC {
   friendTick(f, dt) {
     if (this.user !== f) return;
     f.fun = clamp(f.fun + TUNE.pc.playFun * dt);
-    if (this.spin) return;
+    if (this.spin) return this.tickSpin();
     this.botT -= dt;
     if (this.botT > 0) return;
     this.botT = rand(2, 3.5);
@@ -340,29 +360,18 @@ export class PC {
       if (hit?.uv) this.mouse = { x: hit.uv.x * CW, y: (1 - hit.uv.y) * CH };
     }
     const click = this.focus && pressed;
-    if (this.spin) {
-      const s = this.spin;
-      s.t += dt;
-      const k = Math.min(1, s.t / s.dur), e = 1 - Math.pow(1 - k, 3);
-      this.angle = s.from + (s.to - s.from) * e;
-      const tick = Math.floor(this.angle / 0.35);
-      if (tick !== s.lastTick && k < 0.95) {
-        s.lastTick = tick;
-        if (this.focus || this.near()) this.game.sfx.click();
-      }
-      if (k >= 1) this.endSpin();
-    }
+    this.tickSpin();
     if (this.result) this.result.t -= dt;
     if (this.app === 'cs') this.tickCS(dt, click && this.mouse.y > 56);
     if (click) {
       const b = this.buttons.find((b) => this.mouse.x >= b.x && this.mouse.x <= b.x + b.w && this.mouse.y >= b.y && this.mouse.y <= b.y + b.h);
       if (b) b.fn();
     }
-    // redraw: always while someone looks at it / it moves, otherwise now and then
+    // redraw: every frame while Oleg sits at it; near it, ~20 times a second while it spins, otherwise now and then
     this.drawT = (this.drawT ?? 0) - dt;
-    if (this.focus || this.spin || this.app === 'cs' || this.drawT <= 0) {
-      this.drawT = 0.5;
-      if (this.focus || this.near() || this.spin) this.draw();
+    if (this.focus || this.drawT <= 0) {
+      this.drawT = this.spin ? 0.05 : 0.5;
+      if (this.focus || this.near()) this.draw();
     }
   }
 
@@ -480,6 +489,7 @@ export class PC {
     // buy / sell
     const by = 480;
     if (this.focus) {
+      this.buyBtn = this.buttons.length;
       const hb = this.btn(20, by, 140, 44, () => (this.buying = !this.buying));
       c.fillStyle = hb || this.buying ? '#3a3d48' : '#2a2c35';
       roundRect(c, 20, by, 140, 44, 8);
@@ -493,7 +503,7 @@ export class PC {
       roundRect(c, 170, by, 140, 44, 8);
       c.fill();
       c.fillStyle = own ? '#7fd48a' : '#555';
-      c.fillText(own ? `Продать ${fmt(own.price * TUNE.pc.sell)}` : 'Продать', 240, by + 22);
+      c.fillText(own ? `Продать за ${fmt(own.price * TUNE.pc.sell)} ₽` : 'Продать', 240, by + 22, 128);
     }
     // ---- centre: the wheel
     const cx = 512, cy = 258, r = 132;
@@ -527,7 +537,7 @@ export class PC {
     c.textAlign = 'center';
     c.fillStyle = '#9be15d';
     c.font = '800 46px Arial';
-    c.fillText(`${(p * 100).toFixed(2)}%`, cx, cy - 6);
+    c.fillText(`${(p * 100).toFixed(2).replace('.', ',')}%`, cx, cy - 6);
     c.font = '600 16px Arial';
     if (this.result && this.result.t > 0) {
       c.fillStyle = this.result.win ? '#9be15d' : '#ff5a4f';
@@ -581,6 +591,7 @@ export class PC {
     c.fillText('цель апгрейда', rx + 150, 88);
     // ---- buying overlay
     if (this.buying && this.focus) {
+      this.buttons = [this.buttons[this.buyBtn]]; // it's on top: only its cards and «Купить скин» take clicks
       c.fillStyle = '#0d0e12ee';
       roundRect(c, 20, 76, 984, 392, 12);
       c.fill();
@@ -612,7 +623,7 @@ export class PC {
     c.textAlign = 'left';
     c.fillStyle = '#5d606b';
     c.font = '13px Arial';
-    c.fillText('Сайт забирает свою долю: шанс = цена твоего скина / цена цели × 0,9', 24, 580);
+    c.fillText(`Сайт забирает свою долю: шанс = цена твоего скина / цена цели × ${String(TUNE.pc.edge).replace('.', ',')}`, 24, 580);
   }
 
   drawCS(c) {

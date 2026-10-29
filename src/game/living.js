@@ -76,11 +76,14 @@ export class Living {
   drawTV(t) {
     const c = this.ctx, tv = this.tv;
     if (!tv.on) {
+      if (this.blank) return; // the black screen is already up
+      this.blank = true;
       c.fillStyle = '#050607';
       c.fillRect(0, 0, TW, TH);
       this.tex.needsUpdate = true;
       return;
     }
+    this.blank = false;
     if (tv.switchT > 0) {
       // static between channels
       const img = c.createImageData(TW / 4, TH / 4);
@@ -142,8 +145,13 @@ export class Living {
       c.fillText('НОВОСТИ', 8, TH - 24);
       c.font = '600 18px Arial';
       const msg = 'В хрущёвке на окраине жалуются на шум… Соседи вызывают участкового… Курс доллара…   ';
-      const off = (t * 70) % (msg.length * 9);
+      const off = (t * 70) % c.measureText(msg).width;
+      c.save();
+      c.beginPath();
+      c.rect(110, TH - 60, TW - 110, 60); // the ticker runs right of the label
+      c.clip();
       c.fillText(msg + msg, 120 - off, TH - 24);
+      c.restore();
     } else if (ch === '18+') {
       // censored: pink mosaic and a big sticker
       for (let x = 0; x < TW; x += 32) for (let y = 0; y < TH; y += 32) {
@@ -222,7 +230,7 @@ export class Living {
     const pivot = new THREE.Group();
     pivot.position.set(x0, 0, z);
     const frame = mat('#eeeae2', { roughness: 0.5 });
-    const glass = new THREE.MeshStandardMaterial({ color: '#a9c3d6', transparent: true, opacity: 0.2, roughness: 0.05, side: THREE.DoubleSide });
+    const glass = new THREE.MeshStandardMaterial({ color: '#a9c3d6', transparent: true, opacity: 0.2, roughness: 0.05, side: THREE.DoubleSide, forceSinglePass: true });
     const bar = (a, b2, c0, c1) => new THREE.Mesh(new THREE.BoxGeometry(b2 - a, c1 - c0, 0.035).translate((a + b2) / 2, (c0 + c1) / 2, -0.03), frame);
     const t = 0.04;
     pivot.add(bar(0, w, y0, y0 + t), bar(0, w, y1 - t, y1), bar(0, t, y0, y1), bar(w - t, w, y0, y1));
@@ -282,7 +290,10 @@ export class Living {
     const free = g.friends.filter((f) => !f.problem && !f.fallen && !f.event && f.mode !== 'walk');
     if (!free.length) return;
     const f = free[Math.floor(Math.random() * free.length)];
-    const say = () => f.figure.play('shout');
+    const say = (text) => {
+      f.figure.play('shout');
+      f.figure.say(text);
+    };
     const opts = [];
     if (!st.music) opts.push('musicOn');
     else if (st.volume < 3) opts.push('musicUp', 'musicUp');

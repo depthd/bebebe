@@ -59,7 +59,11 @@ export class Shop {
   }
 
   take(id) {
-    const g = GOODS[id];
+    const g = GOODS[id], d = this.out.shopDoor, [x, z] = this.game.olegPos, r = 0.2; // r: Oleg's body (player.js) and a bit
+    // not from the doorway: the door that keeps unpaid stuff in can't shut on him where he stands
+    if (!this.out.inShop(x, z) || (x > d.x0 - r && x < d.x1 + r && z > d.z0 - r && z < d.z1 + r)) {
+      return void this.game.toastOnce('shopDoor', 'Не стой в дверях — зайди и бери', 'warn', 3);
+    }
     if (!this.game.inv.add(g.item, g.portion ?? 1)) return;
     this.unpaid.push({ item: g.item, price: this.price(id) });
     this.game.sfx.click();

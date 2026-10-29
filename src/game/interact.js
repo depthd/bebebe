@@ -10,8 +10,11 @@ import * as THREE from 'three';
 import { TUNE } from '../config.js';
 import { particles } from '../world/particles.js';
 import { mat } from '../world/apartment.js';
+import { roomAt } from '../world/layout.js';
 
-const V = new THREE.Vector3(), V2 = new THREE.Vector3();
+const V = new THREE.Vector3(), V2 = new THREE.Vector3(), V3 = new THREE.Vector3();
+const wallRay = new THREE.Raycaster();
+wallRay.camera = new THREE.PerspectiveCamera(); // apt.group has sprites (the lamp halos): raycasting one needs a camera
 
 export class Interactions {
   constructor(game) {
@@ -40,6 +43,14 @@ export class Interactions {
     tube.frustumCulled = false;
     this.game.dynamic.add(tube);
     this.hose = tube;
+  }
+
+  // a wall, a shut door or a window between two points (water doesn't go through them)
+  walled(a, b) {
+    const d = a.distanceTo(b);
+    wallRay.set(a, V3.copy(b).sub(a).normalize());
+    wallRay.far = d;
+    return wallRay.intersectObject(this.game.apt.group, true).some((h) => !h.object.isSprite);
   }
 
   showerHeld() {
@@ -80,8 +91,9 @@ export class Interactions {
     if (this.showerHeld() && this.hose) {
       const [ox, oz] = g.olegPos;
       if (Math.hypot(ox - this.mixer.x, oz - this.mixer.z) > T.hoseLength) this.returnShower('Шланг не достаёт — лейка вернулась на место');
-      else if (input.hand) {
+      else if (input.hand && !(this.hoseEnd?.distanceToSquared(input.hand) < 1e-4)) { // rebuilt only when the hand moved
         const a = this.mixer, b = input.hand;
+        (this.hoseEnd ??= new THREE.Vector3()).copy(b);
         const mid = a.clone().lerp(b, 0.5);
         mid.y = Math.min(a.y, b.y) - 0.5 - a.distanceTo(b) * 0.15; // it sags
         const curve = new THREE.CatmullRomCurve3([a, a.clone().lerp(mid, 0.5).setY(mid.y + 0.2), mid, mid.clone().lerp(b, 0.5), b]);
@@ -98,7 +110,7 @@ export class Interactions {
           const chest = V.set(f.pos[0], f.figure.pose === 'lie' ? f.y + 0.35 : 1.3, f.pos[1]);
           const to = V2.copy(chest).sub(input.origin);
           const dist = to.length();
-          if (dist > T.sprayRange || to.normalize().dot(input.dir) < Math.cos(0.2)) continue;
+          if (dist > T.sprayRange || to.normalize().dot(input.dir) < Math.cos(0.2) || this.walled(input.origin, chest)) continue;
           f.soak(dt);
           hud = { label: `Поливаешь: ${f.name}`, progress: f.wet };
         }
@@ -109,7 +121,7 @@ export class Interactions {
     // ---- the cat's mouse: throw it, he runs after it
     if (held === 'toy' && input.hand && !tgt?.cat) {
       if (input.pressed) g.throwToy(input.hand, input.dir);
-      else hud = { label: 'ЛКМ — кинуть мышку коту', progress: null };
+      else if (g.inFlat(...g.olegPos)) hud = { label: 'ЛКМ — кинуть мышку коту', progress: null };
     }
 
     // ---- the bucket: fill it from the hand shower at the tub, carry it, throw the water
@@ -136,10 +148,12 @@ export class Interactions {
         // where the water lands: the point on the aim line nearest the fire, up to ~3 m out
         const fire = g.events.fireMesh.position;
         const t = Math.max(0.5, Math.min(3, V.copy(fire).sub(input.origin).dot(input.dir)));
-        g.events.splash(V.copy(input.origin).addScaledVector(input.dir, t));
+        // and only with nothing between Oleg and the flames (they burn against the balcony's end wall: a point just out of it)
+        V2.set(input.origin.x - fire.x, 0, input.origin.z - fire.z).setLength(0.3).add(fire).setY(0.4);
+        if (!this.walled(input.origin, V2)) g.events.splash(V.copy(input.origin).addScaledVector(input.dir, t));
         for (const f of g.friends) {
           const to = V2.set(f.pos[0], 1.3, f.pos[1]).sub(input.origin);
-          if (to.length() < 2.4 && to.normalize().dot(input.dir) > Math.cos(0.35)) f.soak(4);
+          if (to.length() < 2.4 && to.normalize().dot(input.dir) > Math.cos(0.35) && !this.walled(input.origin, V.set(f.pos[0], 1.3, f.pos[1]))) f.soak(4);
         }
         g.inv.swap('water', 'bucket');
       } else hud = { label: g.events.fire ? 'ЛКМ — плеснуть на огонь' : 'ЛКМ — плеснуть водой', progress: null };
@@ -157,7 +171,7 @@ export class Interactions {
         if (Math.random() < dt * 20) particles.puff(puddle.mesh.position.clone().setY(0.05), V.set(0, 0.2, 0), { color: '#ffffff', size0: 0.03, size1: 0.12, life: 0.6, opacity: 0.7 });
         if (puddle.dirt <= 0) g.removePuddle(puddle.mesh);
       }
-      hud = { label: input.down ? 'Трёшь…' : 'Зажми ЛКМ и три мышкой', progress: 1 - puddle.dirt };
+      hud = { label: input.down ? 'Трёшь…' : 'Зажми ЛКМ и води мышью', progress: 1 - puddle.dirt };
     }
 
     // ---- patting a coughing guy on the back
@@ -187,6 +201,11 @@ export class Interactions {
     // ---- shaking a sleeping guy awake: hold LMB on him (he stays grabbed while the button is down);
     // shaking the mouse left-right wakes him faster
     if (!input.down) this.grab = null;
+    if (this.grab) {
+      // he lets go when Oleg walks off: out of reach (aiming reach + half a body) or into another room
+      const [ox, oz] = g.olegPos, r = roomAt(ox, oz);
+      if (Math.hypot(ox - this.grab.pos[0], oz - this.grab.pos[1]) > 3 || (r && r !== this.grab.room)) this.grab = null;
+    }
     const sleeper = (input.down && this.grab) || (friend?.problem?.id === 'sleep' ? friend : null);
     if (!held && sleeper?.problem?.id === 'sleep') {
       const p = sleeper.problem;

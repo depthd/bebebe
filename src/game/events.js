@@ -4,7 +4,7 @@
 //   fire    — Kirill's grill sets the balcony on fire; fill the bucket from the hand shower, throw it
 import * as THREE from 'three';
 import { TUNE } from '../config.js';
-import { SPOTS } from '../world/layout.js';
+import { SPOTS, roomAt } from '../world/layout.js';
 import { particles } from '../world/particles.js';
 import { rand, clamp, nearestNode } from './friends.js';
 
@@ -61,12 +61,12 @@ export class PartyEvents {
     g.alert('Тост! Подойди к столу и выпей (Q)', 'Зал', 'info');
   }
 
-  // Oleg drank: counts if he's at the table during a toast
+  // Oleg drank: counts if he's at the table during a toast (in its room, not behind the wall)
   olegDrank() {
     if (!this.toast) return;
     const g = this.game, t = g.furn.items.partyTable;
-    const [ox, oz] = g.olegPos;
-    if (Math.hypot(ox - (t.x0 + t.x1) / 2, oz - (t.z0 + t.z1) / 2) < TUNE.events.toastReach) this.toast.drank = true;
+    const [ox, oz] = g.olegPos, tx = (t.x0 + t.x1) / 2, tz = (t.z0 + t.z1) / 2;
+    if (Math.hypot(ox - tx, oz - tz) < TUNE.events.toastReach && roomAt(ox, oz) === roomAt(tx, tz)) this.toast.drank = true;
   }
 
   tickToast(dt) {
@@ -120,8 +120,17 @@ export class PartyEvents {
     a.standUp?.();
     a.path = null;
     a.mode = 'idle';
-    const [px, pz] = a.front(0.85);
-    b.walkTo({ id: 'quarrel', node: nearestNode(px, pz), p: [px, pz], pose: null, look: [...a.pos] });
+    // b comes up to him: in front, else beside or behind him (not into the table he got up from, not behind a wall)
+    const room = a.room;
+    let [px, pz] = a.front(0.85);
+    for (const turn of [0, Math.PI / 2, -Math.PI / 2, Math.PI]) {
+      const h = a.heading + turn, x = a.pos[0] + Math.sin(h) * 0.85, z = a.pos[1] + Math.cos(h) * 0.85;
+      if (room && roomAt(x, z) === room && !g.bodyBlocked(x, z, 0.2)) {
+        [px, pz] = [x, z];
+        break;
+      }
+    }
+    b.walkTo({ id: 'quarrel', node: nearestNode(px, pz, room?.id), p: [px, pz], pose: null, look: [...a.pos] });
     const q = { a, b, left: TUNE.events.quarrelTime / Math.sqrt(g.pace), sep: 0, lineT: 0, side: 0, fight: 0 };
     this.quarrel = q;
     for (const [f, o] of [[a, b], [b, a]]) {

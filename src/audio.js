@@ -1,9 +1,10 @@
 // Sounds are synthesized with WebAudio; the only recordings are the guys' voices. Call init() from a click.
 
 // ---------- recorded voices: src/assets/voice/<who>_<kind>_<n>.mp3 ----------
-// kinds: monolog, booze (reaction to a drink), cough, quote, vapeloop; who = event for non-attributed ones.
+// kinds: monolog (the talk action), koch (the «Коч!» chain), booze (after a drink), food (after eating), quote,
+// vapeloop; who = event for the ones nobody in particular says (pat, puke, hush, neighbors, memfull).
 const FILES = import.meta.glob('./assets/voice/*.mp3', { eager: true, query: '?inline', import: 'default' });
-const CLIPS = {}; // 'temych_cough' -> [src, ...]
+const CLIPS = {}; // 'temych_koch' -> [src, ...]
 for (const [path, src] of Object.entries(FILES)) {
   const m = path.match(/\/([a-z]+_[a-z]+?)(?:_\d+)?\.mp3$/);
   if (m) (CLIPS[m[1]] ??= []).push(src);
@@ -120,6 +121,7 @@ export const sfx = {
   pat: () => noise(0.07, { vol: 0.7, freq: 350, q: 1.5 }),
   shutter: () => (noise(0.04, { vol: 0.8, freq: 5000, q: 0.7 }), noise(0.06, { vol: 0.6, freq: 2500, q: 0.7, when: 0.08 })),
   squeak: () => tone(2400, 0.07, { type: 'sine', vol: 0.06, slide: 600 }), // the toy mouse under a paw
+  shot: () => (noise(0.16, { vol: 0.7, freq: 1400, q: 0.5 }), tone(110, 0.12, { type: 'sine', vol: 0.25, slide: -60 })), // КС on the PC
 };
 
 // Party music: a dumb 4-chord loop with a kick. Plays while the stereo is on.
