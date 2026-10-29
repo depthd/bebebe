@@ -118,7 +118,9 @@ class Walker {
   }
   walkTo(spot, onArrive, blocked) {
     this.leaveSeat();
-    const r = route(this.node, this.pos, spot.node, spot.p, blocked);
+    // from the node of his spot; off a spot (stopped halfway, led, playing) the nearest one in his room
+    const from = this.spot ? this.node : nearestNode(this.pos[0], this.pos[1], this.room?.id);
+    const r = route(from, this.pos, spot.node, spot.p, blocked);
     if (!r) return false;
     if (this.rag?.isRobot) r.points[r.points.length - 1] = this.approach(spot); // a body can't walk into the sofa
     this.stay = null;
@@ -331,7 +333,12 @@ const PROBLEMS = {
         run() {
           f.fun -= 5;
           f.clearProblem(true);
-          g.inv.add('beer');
+          // hands full: the bottle goes back on the table instead of vanishing
+          if (g.inv.has(null)) g.inv.add('beer');
+          else {
+            g.state.table.beer += TUNE.drink.beer.servings;
+            g.toast('Руки заняты — бутылку поставил на стол', 'info');
+          }
         },
       }],
     };
@@ -389,12 +396,12 @@ const PROBLEMS = {
         if (f.mode !== 'walk' && t >= TUNE.lyokha.smashEvery) {
           t = 0;
           g.breakSomething(f.room?.id);
-          const next = ['sofaA', 'kitchen', 'bedroom', 'hall', 'table2'][Math.floor(Math.random() * 5)];
-          f.walkTo({ ...SPOTS[next], pose: null, y: 0 }); // smashes standing, never sits down
+          const next = SPOTS[['sofaA', 'kitchen', 'bedroom', 'hall', 'table2'][Math.floor(Math.random() * 5)]];
+          f.walkTo({ ...next, p: next.pose ? f.approach(next) : next.p, pose: null, y: 0 }); // smashes standing, never sits down: by the sofa, not in it
         }
       },
       actions: () => [{
-        key: 'E', text: 'Взять за плечо и вести в ванную', cost: TUNE.cost.lead,
+        key: 'E', text: 'Взять за плечо и вести в санузел', cost: TUNE.cost.lead,
         run() {
           // he follows Oleg along his footsteps; Oleg has to walk him into the bathroom himself
           f.path = null;
@@ -474,6 +481,7 @@ function startWasted(f, g) {
   } else if (kind === 'sleepTub') {
     f.walkTo(SPOTS.tub, () => f.setProblem(PROBLEMS.sleepTub(f, g)));
   } else {
+    if (f.figure.pose !== 'stand') f.standUp(); // wasted on the sofa: he smashes on his feet
     f.setProblem(PROBLEMS.smash(f, g));
   }
 }
@@ -548,8 +556,8 @@ export class Friend extends Walker {
     this.chatT = (this.chatT ?? rand(10, 30)) - dt;
     if (this.chatT > 0 || this.problem || this.figure.pose === 'lie' || this.game.talk?.friend === this) return;
     this.chatT = rand(30, 55);
-    if ((this.game.voices?.count(/_(monolog|quote)$/) ?? 0) > 0) return;
-    if (!this.speak('quote', this.def.quotes[0])) this.speak(null, this.def.quotes[Math.floor(Math.random() * this.def.quotes.length)]);
+    if (this.game.hushed || (this.game.voices?.count(/_(monolog|quote)$/) ?? 0) > 0) return; // someone at the door, or talking
+    this.speak('quote', this.def.quotes[0]);
   }
 
   // sounds that come from what he is doing: vaping, reacting to a drink
@@ -624,7 +632,8 @@ export class Friend extends Walker {
 
   // face picture: busy with his thing, otherwise by how much fun he has
   faceState() {
-    if (this.problem && ['cry', 'puke', 'sleep', 'cough'].includes(this.problem.id)) return this.problem.id; // if there's a picture
+    const pid = this.problem?.id === 'sleepTub' ? 'sleep' : this.problem?.id;
+    if (['cry', 'puke', 'sleep', 'cough'].includes(pid)) return pid; // if there's a picture
     if (!this.problem && ['grill', 'anime', 'vape'].includes(this.activity?.id) && this.mode !== 'walk') return 'doing';
     if (this.fun <= 3) return 'sad';
     if (this.fun < 30) return 'angry';
@@ -1130,7 +1139,7 @@ export class Friend extends Walker {
       } else if (!this.problem) this.setProblem(PROBLEMS.grillOut(this, g));
       if (!g.doors.balcony.open) {
         a.closedT += dt;
-        if (a.closedT >= G.smokeAfter && this.problem?.id !== 'smoke') this.setProblem(PROBLEMS.smoke(this, g), true);
+        if (a.closedT >= G.smokeAfter && this.problem?.id !== 'smoke' && this.problem?.id !== 'fire') this.setProblem(PROBLEMS.smoke(this, g), true); // the fire stays the problem
       } else a.closedT = 0;
       if (g.doors.balcony.open && chance(G.draftChance * g.diff, dt)) {
         g.doors.balcony.setOpen(false);
@@ -1194,7 +1203,7 @@ export class Friend extends Walker {
           },
         });
       }
-      if (this.talkCooldown <= 0 && !this.problem && this.unusedMonolog()) {
+      if (this.talkCooldown <= 0 && !this.problem && !g.hushed && this.unusedMonolog()) { // someone at the door: everybody keeps quiet
         list.push({
           key: 'R', text: 'Потрещать',
           run: () => {
@@ -1274,6 +1283,8 @@ export class Cat extends Walker {
     this.carried = true;
     this.path = null;
     this.mode = 'idle';
+    this.crouch = this.pounce = 0; // a pounce cut short doesn't go on once he's put down
+    this.leap = null;
     this.railT = 0;
     this.balconyT = 0;
     this.figure.root.visible = false;
@@ -1357,8 +1368,8 @@ export class Cat extends Walker {
       this.fun = clamp(this.fun + C.heldFun * dt);
       return;
     }
-    // a mouse on the floor nearby: he goes after it
-    const toy = g.toyLoose ? g.toy.position : null;
+    // a mouse on the floor nearby: he goes after it (in the flat only: one on the landing he leaves alone)
+    const toy = g.toyLoose && g.inFlat(g.toy.position.x, g.toy.position.z) ? g.toy.position : null;
     if (toy && this.playLeft <= 0 && this.problem?.id !== 'rail' && Math.hypot(toy.x - this.pos[0], toy.z - this.pos[1]) < C.noticeRange) {
       this.playLeft = C.toyPlay;
       this.path = null;
@@ -1425,7 +1436,9 @@ export class Cat extends Walker {
       if (this.mode !== 'walk' || this.chaseRoom !== toyRoom) {
         this.chaseRoom = toyRoom;
         this.crouch = this.pounce = 0;
-        if (!this.walkTo({ id: 'toy', node: nearestNode(toy.x, toy.z), p: [toy.x, toy.z], pose: null }, () => (this.mode = 'chase'), this.blockedNodes())) this.endPlay(false);
+        // the node in the mouse's room; behind a shut door he can't get to it
+        const node = nearestNode(toy.x, toy.z, toyRoom), blocked = this.blockedNodes();
+        if (blocked(node) || !this.walkTo({ id: 'toy', node, p: [toy.x, toy.z], pose: null }, () => (this.mode = 'chase'), blocked)) this.endPlay(false);
       }
       return;
     }
