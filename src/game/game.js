@@ -13,6 +13,8 @@ import { PC } from './pc.js';
 import { Living } from './living.js';
 import { Shop } from './shop.js';
 import { step as physicsStep, moveOleg, updateDoors } from '../world/ragdoll.js';
+import { createPhotoWall } from '../world/photowall.js';
+import { dateOf } from './story.js';
 
 export const ITEMS = {
   beer: { name: 'Пиво', icon: '🍺' },
@@ -136,6 +138,20 @@ export class Game {
     this.toyLoose = false; // thrown / dropped on the floor: the cat goes after it
     this.dynamic.add(this.toy);
     this.buildBucket();
+    // the photos of the earlier nights, on the walls (world/photowall.js); the album outlives the nights
+    this.photoWall = createPhotoWall();
+    this.dynamic.add(this.photoWall.group);
+    // the peephole in the front door: while `focus` is set main.js shows the landing through it (world/peephole.js),
+    // and whoever is out there counts as seen; any key, a click or Esc puts it away
+    const lens = this.doors.entrance.peep;
+    this.peephole = {
+      focus: null,
+      anyKey: true,
+      open: () => lens && (this.peephole.focus = { cam: lens }),
+      cancel: () => (this.peephole.focus = null),
+      hint: () => 'Глазок · любая клавиша — назад',
+      progress: () => null,
+    };
     this.events = new PartyEvents(this);
     this.pc = new PC(this);
     this.living = new Living(this);
@@ -431,6 +447,7 @@ export class Game {
     this.aloneT = 0;
     this.stuck = {};
     this.entranceCloseT = 0;
+    if (this.peephole) this.peephole.focus = null; // a night can end with his eye at the door
     this.hands.patLast = -9;
     // main.js puts him at the start: his body mustn't fly there from where the last night ended
     this.olegPos = [START.x, START.z];
@@ -515,6 +532,13 @@ export class Game {
     this.doors.entrance.setOpen(false);
     this.lastToy = -1;
     this.respawnToy();
+    this.photoWall.hang(); // whatever was snapped before tonight
+  }
+
+  // the earlier nights' photos (the ones on the walls), oldest first: [{ img, caption, night, date }];
+  // tonight's are state.photos until the next night
+  get album() {
+    return this.photoWall.album;
   }
 
   // how close the neighbours are to knocking, 0..1
@@ -985,6 +1009,7 @@ export class Game {
     }
     st.photoCats.add(fresh.moment.cat);
     st.photos.push({ caption: fresh.moment.caption, img });
+    this.photoWall.add({ img, caption: fresh.moment.caption, night: this.night, date: dateOf(this.night).short });
     st.totalFun = clamp(st.totalFun + P.fun);
     if (fresh.f.fun !== undefined) fresh.f.fun = clamp(fresh.f.fun + P.friendFun);
     this.oleg.fun += 4;
@@ -1222,7 +1247,11 @@ export class Game {
     d.entrance.leaf.userData.target = {
       name: 'Входная дверь',
       info: () => this.doorNews,
-      actions: () => [{ key: 'E', text: 'Открыть дверь', run: () => this.openEntrance() }],
+      actions: () => [
+        { key: 'E', text: 'Открыть дверь', run: () => this.openEntrance() },
+        // from the hall, while it's shut
+        ...(!d.entrance.open && roomAt(...this.olegPos)?.id === 'hall' ? [{ key: 'R', text: 'Глазок', run: () => this.peephole.open() }] : []),
+      ],
     };
   }
 
@@ -1274,6 +1303,12 @@ export class Game {
 
     for (const p of this.pending.filter((p) => p.at <= st.t)) p.fn();
     this.pending = this.pending.filter((p) => p.at > st.t);
+
+    // at the peephole: whoever is on the landing is seen, like on the door camera
+    if (this.peephole.focus) {
+      if (this.oleg.blackout > 0 || this.oleg.fall || this.doors.entrance.open) this.peephole.cancel();
+      else this.camSeen = this.visitor;
+    }
 
     // story time
     if (this.talk) {

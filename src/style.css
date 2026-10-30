@@ -158,11 +158,12 @@ body.focus #hotbar, body.focus .keys-hint, body.focus #hand-name, body.focus .hu
 @media (max-width: 900px) { .hud-tr { width: 200px; } .oleg-meters { width: 140px; } }
 
 /* ================= phone =================
-   Held in Oleg's left hand: thumb on the side, fingers behind; always fits the screen (the shop scrolls inside). */
+   Held in Oleg's left hand: thumb on the side, fingers behind; always fits the screen (the apps scroll inside).
+   A phone like any other: the status bar, a home screen on a birthday painting, apps full screen, the nav bar. */
 #phone {
-  position: fixed; right: 60px; bottom: 12px; width: 360px; max-width: calc(100vw - 32px); max-height: calc(100vh - 24px);
-  background: linear-gradient(#111116, #0a0a0d); border: 3px solid #2c2a33; border-radius: 34px; padding: 14px 14px 10px;
-  display: grid; grid-template-rows: auto 1fr auto; gap: 10px;
+  position: fixed; right: 60px; bottom: 12px; width: 360px; max-width: calc(100vw - 32px); height: min(640px, calc(100vh - 24px));
+  background: linear-gradient(#111116, #0a0a0d); border: 3px solid #2c2a33; border-radius: 34px; padding: 9px;
+  display: grid;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(255, 255, 255, 0.04);
   transform-origin: 70% 100%; transform: rotate(-3deg); overflow: visible; user-select: none;
 }
@@ -170,18 +171,81 @@ body.focus #hotbar, body.focus .keys-hint, body.focus #hand-name, body.focus .hu
 .phone-hand i { position: absolute; background: #e2b594; box-shadow: inset -6px -4px 0 rgba(0, 0, 0, 0.12); }
 .phone-hand i:nth-child(1) { left: 0; top: 0; width: 70%; height: 150px; border-radius: 40px 30px 0 0; }
 .phone-hand i:nth-child(2) { display: none; }
-.phone-top { display: flex; justify-content: space-between; align-items: center; font: 14px var(--mono); color: var(--ink-dim); padding: 0 8px; }
-.phone-money { font: 700 18px var(--mono); color: var(--good); display: flex; align-items: center; gap: 6px; }
+.phone-display { position: relative; min-height: 0; display: grid; grid-template-rows: auto 1fr auto; border-radius: 26px; overflow: hidden; background: #0f0e13; }
+.phone-display[data-app="home"] { background: linear-gradient(rgba(5, 8, 20, 0.6), rgba(5, 8, 20, 0.1) 32%, rgba(5, 8, 20, 0.12) 52%, rgba(5, 8, 20, 0.78)), var(--wallpaper) 40% 100% / auto 140%; } /* the painting's banner goes up behind the status bar, the mushrooms stay */
+.phone-status { display: flex; align-items: center; gap: 8px; padding: 8px 18px 4px; font: 12px var(--mono); color: #fff; }
+.phone-status b { font: 700 13px var(--mono); }
+#phone-date { color: rgba(255, 255, 255, 0.7); }
+.ps-right { margin-left: auto; display: flex; align-items: center; gap: 5px; font-size: 11px; }
+.ps-sig { display: inline-flex; align-items: flex-end; gap: 1.5px; height: 11px; }
+.ps-sig i { width: 3px; border-radius: 1px; background: #fff; }
+.ps-sig i:nth-child(1) { height: 4px; }
+.ps-sig i:nth-child(2) { height: 6px; }
+.ps-sig i:nth-child(3) { height: 8.5px; }
+.ps-sig i:nth-child(4) { height: 11px; opacity: 0.35; }
+.ps-bat { position: relative; display: inline-flex; width: 22px; height: 11px; padding: 1px; border: 1.5px solid rgba(255, 255, 255, 0.85); border-radius: 3px; margin-right: 2px; }
+.ps-bat::after { content: ''; position: absolute; right: -4px; top: 2.5px; width: 2px; height: 3.5px; border-radius: 0 1px 1px 0; background: rgba(255, 255, 255, 0.85); }
+.ps-bat b { height: 100%; border-radius: 1px; background: #fff; }
+.ps-bat.low b { background: var(--bad); }
+.phone-screen { position: relative; min-height: 0; }
+.app { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 8px; padding: 0 10px 6px; animation: app-in 0.16s ease-out; }
+@keyframes app-in { from { opacity: 0; transform: scale(0.96); } }
+.app-bar { flex: none; display: flex; align-items: center; gap: 6px; height: 38px; }
+.app-bar b { font: 17px var(--display); }
+.app-bar small { color: var(--ink-dim); font-size: 12px; margin-top: 3px; }
+.app-bar > :last-child:not(:nth-child(2)) { margin-left: auto; }
+.app-back { width: 34px; height: 34px; padding: 0 0 3px; border-radius: 50%; border-color: transparent; background: transparent; font: 400 30px/1 var(--body); }
+.app-body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; display: grid; align-content: start; gap: 8px; }
+.app-empty { margin: 18px 8px; color: var(--ink-dim); font-size: 14px; line-height: 1.4; text-align: center; }
+
+/* the home screen: the clock, the money, the texts that came in, the apps */
+.app-home { padding: 4px 14px 8px; gap: 10px; }
+.home-clock { display: grid; justify-items: center; margin-top: 14px; color: #fff; text-shadow: 0 2px 14px rgba(0, 0, 0, 0.65); }
+.home-clock b { font: 66px/1 var(--display); letter-spacing: 0.02em; }
+.home-clock span { margin-top: 4px; font: 700 15px var(--body); }
+.phone-money { align-self: center; display: flex; align-items: center; gap: 6px; padding: 3px 12px 3px 5px; border-radius: 999px; background: rgba(8, 10, 16, 0.6); font: 700 16px var(--mono); color: var(--good); }
 .phone-money img { width: 24px; height: 24px; }
-.phone-screen { min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; }
-.phone-cam { display: grid; gap: 10px; }
-.cam-view { position: relative; aspect-ratio: 3 / 4; border-radius: 18px; overflow: hidden; background: #000; }
+.home-notes { flex: 0 1 auto; min-height: 0; overflow: hidden; display: grid; align-content: start; gap: 6px; } /* a short screen loses texts, not the apps */
+.home-note, .phone-banner { display: grid; grid-template-columns: 32px 1fr auto; align-items: center; gap: 9px; padding: 8px 10px; border-radius: 16px; text-align: left; font: 13px/1.25 var(--body); color: #fff; background: rgba(22, 22, 30, 0.78); border: 1px solid rgba(255, 255, 255, 0.1); backdrop-filter: blur(8px); }
+.home-note:hover, .phone-banner:hover { background: rgba(40, 40, 52, 0.85); }
+.home-note .app-ico, .phone-banner .app-ico, .sms-note .app-ico { width: 32px; height: 32px; border-radius: 9px; }
+.home-note span, .phone-banner span { min-width: 0; }
+.home-note b, .phone-banner b { display: block; font-size: 13px; }
+.home-note b small { color: rgba(255, 255, 255, 0.6); font-weight: 400; }
+.home-note span span, .phone-banner span span { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 400; color: rgba(255, 255, 255, 0.85); }
+.home-note time { align-self: start; font: 11px var(--mono); color: rgba(255, 255, 255, 0.6); }
+.home-apps { margin-top: auto; display: grid; grid-template-columns: repeat(4, 1fr); padding: 10px 2px 6px; border-radius: 24px; background: rgba(255, 255, 255, 0.14); backdrop-filter: blur(10px); }
+.home-apps button { display: grid; justify-items: center; gap: 5px; padding: 2px 0; border: 0; background: none; font: 11px var(--body); color: #fff; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9); }
+.home-apps button:hover .app-ico { filter: brightness(1.12); }
+.app-ico { display: grid; place-items: center; width: 54px; height: 54px; border-radius: 15px; box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.28); }
+.app-ico svg { width: 62%; height: 62%; }
+.app-ico.cam { background: linear-gradient(160deg, #636878, #22242c); }
+.app-ico.shop { background: linear-gradient(160deg, #ffb35c, #d9671f); }
+.app-ico.sms { background: linear-gradient(160deg, #73e28e, #1f9c45); }
+.app-ico.gallery { background: linear-gradient(160deg, #ff9fc8, #8a62ff); }
+.app-slot { position: relative; }
+.app-badge { position: absolute; top: -6px; right: -7px; min-width: 21px; height: 21px; padding: 0 5px; border-radius: 11px; background: #ff3b30; color: #fff; font: 700 12px/21px var(--body); font-style: normal; text-align: center; text-shadow: none; box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.3); }
+/* a text while an app is up drops in over it; tap opens the chat */
+.phone-banner { position: absolute; left: 8px; right: 8px; top: 4px; z-index: 2; grid-template-columns: 32px 1fr; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5); }
+.phone-banner.in { animation: drop-in 0.3s ease-out; }
+@keyframes drop-in { from { opacity: 0; translate: 0 -24px; } }
+.phone-nav { display: grid; grid-template-columns: repeat(3, 1fr); align-items: center; height: 40px; padding: 0 20px 2px; }
+.phone-nav button { justify-self: center; display: grid; place-items: center; grid-auto-flow: column; gap: 4px; width: 60px; height: 32px; padding: 0; border: 0; border-radius: 16px; background: none; color: rgba(255, 255, 255, 0.8); font: 15px var(--body); }
+.phone-nav button:hover { background: rgba(255, 255, 255, 0.12); }
+.phone-nav small { font: 10px var(--mono); opacity: 0.7; }
+#phone-home i { width: 17px; height: 17px; border: 2px solid currentColor; border-radius: 50%; }
+.phone-display[data-app="home"] #phone-back { opacity: 0.35; }
+
+/* the door camera */
+.cam-view { position: relative; flex: 1; min-height: 0; border-radius: 16px; overflow: hidden; background: #000; }
 .cam-view canvas { position: absolute; inset: 0; width: 100%; height: 100%; filter: grayscale(0.6) contrast(1.2) brightness(1.1); }
 .cam-view::after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.18) 0 2px, transparent 2px 4px), radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.55)); pointer-events: none; }
 .rec { position: absolute; top: 10px; left: 12px; font: 12px var(--mono); color: var(--led); z-index: 1; text-shadow: 0 0 6px rgba(255, 74, 44, 0.7); }
-.cam-who { font: 17px var(--display); text-align: center; padding: 10px; border-radius: 14px; background: #17161c; }
+.cam-who { flex: none; font: 16px var(--display); text-align: center; padding: 10px; border-radius: 14px; background: #17161c; }
 .cam-who.busy { background: #5a1616; color: #fff; }
-.phone-shop { display: grid; gap: 8px; }
+
+/* the shop */
+.shop-money { font: 700 16px var(--mono); color: var(--good); }
 .shop-list { display: grid; gap: 6px; }
 .shop-row { display: grid; grid-template-columns: 40px 1fr auto; align-items: center; gap: 8px; background: #17161c; border: 1px solid transparent; border-radius: 14px; padding: 6px 8px; transition: border-color 0.15s, background 0.15s; }
 .shop-row.in { border-color: var(--lamp); background: #201d16; }
@@ -206,10 +270,48 @@ body.focus #hotbar, body.focus .keys-hint, body.focus #hand-name, body.focus .hu
 .order img { width: 28px; height: 28px; }
 .order .bar { height: 6px; }
 .order .bar i { background: var(--good); }
-.phone-dock { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-.phone-dock button { display: grid; justify-items: center; gap: 4px; padding: 8px 4px; font-size: 12px; border-radius: 16px; }
-.phone-dock button img, .phone-dock .x { width: 34px; height: 34px; font-size: 24px; line-height: 34px; }
-.phone-dock button.on { background: rgba(242, 179, 61, 0.2); border-color: var(--lamp); }
+
+/* texts: the chats, then one chat (every night opens a new day, and the day is always the same) */
+.sms-row { display: grid; grid-template-columns: 44px 1fr auto; grid-template-rows: auto auto; column-gap: 10px; row-gap: 2px; align-items: center; padding: 8px; border: 0; border-radius: 14px; background: none; text-align: left; font: 14px var(--body); }
+.sms-row:hover { background: rgba(239, 230, 212, 0.08); }
+.sms-row .sms-ava { grid-row: span 2; }
+.sms-row b { font: 700 15px var(--body); }
+.sms-row time { font: 11px var(--mono); color: var(--ink-dim); }
+.sms-row span { grid-column: 2; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 400; color: var(--ink-dim); }
+.sms-row em { grid-column: 3; justify-self: end; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: #2fb457; color: #fff; font: 700 12px/20px var(--body); font-style: normal; text-align: center; }
+.sms-row.new span { color: var(--ink); }
+.sms-ava { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; overflow: hidden; background: #3d7bd9; font: 700 19px var(--body); font-style: normal; color: #fff; }
+.sms-ava img { width: 100%; height: 100%; }
+.sms-body { gap: 6px; padding: 2px 2px 8px; }
+.sms-day { justify-self: center; margin: 8px 0 2px; padding: 3px 10px; border-radius: 10px; background: rgba(239, 230, 212, 0.08); font: 11px var(--display); letter-spacing: 0.05em; color: var(--ink-dim); }
+.sms-msg { justify-self: start; max-width: 84%; padding: 8px 12px 6px; border-radius: 16px 16px 16px 5px; background: #262531; font: 15px/1.3 var(--body); overflow-wrap: anywhere; }
+.sms-msg time { display: block; margin-top: 2px; text-align: right; font: 10px var(--mono); color: var(--ink-dim); }
+
+/* the gallery: this night's shots, then the ones from before */
+.snap { display: flex; align-items: center; gap: 6px; padding: 5px 12px 5px 6px; border-radius: 16px; font: 700 13px var(--body); }
+.snap img { width: 24px; height: 24px; }
+.gal-head { margin: 4px 2px -2px; font: 13px var(--display); letter-spacing: 0.04em; }
+.gal-head small { margin-left: 4px; font: 12px var(--mono); color: var(--ink-dim); }
+.gal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.gal-tile { display: grid; gap: 5px; padding: 5px 5px 6px; border: 0; border-radius: 4px; background: #f7f3ea; color: #1b1612; font: 11px/1.15 var(--display); text-align: center; transform: rotate(var(--r, 0deg)); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4); }
+.gal-tile:hover { background: #fff; }
+.gal-tile:nth-child(3n + 1) { --r: -1.5deg; }
+.gal-tile:nth-child(3n + 2) { --r: 1deg; }
+.gal-tile img { width: 100%; aspect-ratio: 8 / 5; object-fit: cover; display: block; background: #222; }
+.gal-tile small { margin-top: -3px; font: 10px var(--mono); color: #8a8072; }
+.gal-view { display: grid; gap: 8px; justify-items: center; padding: 10px 10px 14px; border: 0; border-radius: 4px; background: #f7f3ea; color: #1b1612; transform: rotate(-1deg); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5); margin: 10px 4px; }
+.gal-view:hover { background: #f7f3ea; }
+.gal-view img { width: 100%; display: block; background: #222; }
+.gal-view b { font: 17px var(--display); }
+.gal-view small { font: 12px var(--body); color: #6b6358; }
+
+/* a text with the phone in the pocket: a buzz in the bottom right corner, where the phone comes up */
+.sms-note { position: absolute; right: 24px; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; align-items: center; gap: 10px; width: min(300px, 40vw); padding: 9px 12px 9px 10px; border-radius: 16px; background: var(--glass-hi); border: 1px solid var(--edge); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); backdrop-filter: blur(6px); }
+.sms-note.in { animation: buzz-in 0.5s ease-out; }
+@keyframes buzz-in { 0% { opacity: 0; translate: 24px 0; } 40% { opacity: 1; translate: 0 0; rotate: 0deg; } 55% { rotate: -2deg; } 70% { rotate: 2deg; } 85% { rotate: -1deg; } 100% { rotate: 0deg; } }
+.sms-note b { display: block; font: 13px var(--display); color: var(--good); }
+.sms-note span { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 13px; color: var(--ink); }
+.sms-note kbd { font: 700 11px/18px var(--mono); background: var(--lamp); color: #1b1408; border-radius: 5px; padding: 0 6px; box-shadow: 0 2px 0 #9a6c16; }
 
 /* ================= menus =================
    The flat itself is the backdrop: the card sits on a dark band on the left, the party shows on the right. */

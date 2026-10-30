@@ -7,6 +7,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 
 export const mat = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.85, ...extra });
+const PEEP_Y = 1.55; // the front door's peephole, from the floor
 
 // UVs from world position so textures keep real-world scale on any box/plane (geometry baked in world space).
 export function worldUV(geo, scale = 1) {
@@ -470,6 +471,12 @@ function addOpeningDetails(group, w, o, ax, t0, t1, m, doors, colliders) {
       style: 'entrance',
       open: false,
     });
+    // the peephole: the middle of the leaf at eye height, looking out at the landing (world/peephole.js)
+    const [cx, cz] = doors.entrance.center, out = ax ? [0, -inside] : [-inside, 0];
+    doors.entrance.peep = {
+      pos: new THREE.Vector3(cx + out[0] * 0.06, PEEP_Y, cz + out[1] * 0.06),
+      look: new THREE.Vector3(cx + out[0] * 3, PEEP_Y - 0.15, cz + out[1] * 3),
+    };
   }
 }
 
@@ -492,6 +499,12 @@ function makeDoor(group, colliders, o) {
     for (let y = 0.3; y < o.height - 0.1; y += 0.3)
       for (let s = 0.12; s < o.width - 0.05; s += 0.22)
         for (const side of [-1, 1]) add(new THREE.SphereGeometry(0.012, 6, 4).translate(s, y, side * (t / 2 + 0.004)), btn);
+    // the peephole: a brass ring with the dark lens in it, on both faces
+    const lens = mat('#10161c', { roughness: 0.1, metalness: 0.3 });
+    for (const side of [-1, 1]) {
+      add(new THREE.CylinderGeometry(0.014, 0.014, 0.008, 16).rotateX(Math.PI / 2).translate(o.width / 2, PEEP_Y, side * (t / 2 + 0.004)), btn);
+      add(new THREE.CylinderGeometry(0.007, 0.007, 0.004, 12).rotateX(Math.PI / 2).translate(o.width / 2, PEEP_Y, side * (t / 2 + 0.0085)), lens);
+    }
   } else if (o.style === 'balcony') {
     const frame = mat('#f2efe8', { roughness: 0.5 });
     add(boxGeo(0, o.width, 0.01, 0.9, -t / 2, t / 2), frame);

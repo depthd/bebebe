@@ -21,13 +21,18 @@ const falloff = (pos) => {
 export const voices = {
   has: (key) => !!CLIPS[key]?.length,
   list: (key) => CLIPS[key] ?? [],
-  // play a random clip of `key` ('lyokha_booze'), or a given `src`; pos = [x, z] or () => [x, z] for distance volume
-  play(key, { pos = null, gain = 1, loop = false, src = null } = {}) {
+  // play a random clip of `key` ('lyokha_booze'), or a given `src`; pos = [x, z] or () => [x, z] for distance volume;
+  // rate < 1 plays it slower and lower, like a tape (a drunk guy's voice)
+  play(key, { pos = null, gain = 1, loop = false, src = null, rate = 1 } = {}) {
     const list = CLIPS[key];
     if (!ctx || !list?.length) return null;
     const a = new Audio(src ?? list[Math.floor(Math.random() * list.length)]);
+    if (rate !== 1) {
+      a.preservesPitch = a.mozPreservesPitch = a.webkitPreservesPitch = false;
+      a.defaultPlaybackRate = a.playbackRate = rate;
+    }
     const h = {
-      key, audio: a, pos, gain,
+      key, audio: a, pos, gain, rate,
       get playing() {
         return !a.ended && !a.paused;
       },
@@ -126,6 +131,8 @@ export const sfx = {
   creak: () => (tone(170, 0.7, { type: 'sawtooth', vol: 0.035, slide: 110 }), tone(260, 0.45, { type: 'sawtooth', vol: 0.025, when: 0.3, slide: -90 })),
   steps: () => [0, 0.42].forEach((w) => noise(0.08, { vol: 0.6, freq: 240, q: 1.6, when: w })),
   bonk: () => (noise(0.14, { vol: 1.2, freq: 260, q: 1.1 }), tone(95, 0.35, { type: 'sine', vol: 0.6, slide: -55 }), tone(3100, 2.6, { type: 'sine', vol: 0.025, when: 0.08 })),
+  // a text: the phone buzzes twice, then a soft two-note chime (ui/phone.js)
+  sms: () => ([0, 0.17].forEach((w) => tone(140, 0.11, { type: 'sawtooth', vol: 0.035, when: w })), tone(1046.5, 0.1, { type: 'sine', vol: 0.07, when: 0.36 }), tone(1568, 0.18, { type: 'sine', vol: 0.06, when: 0.46 })),
 };
 
 // Party music: a dumb 4-chord loop with a kick. Plays while the stereo is on.

@@ -488,6 +488,68 @@ function startWasted(f, g) {
 
 // ---------- friend ----------
 
+// ---------- drunk speech ----------
+// How a line comes out of him at this drunkenness: drawn-out vowels, then a stutter on the first letter and an
+// «…ик», then swallowed letters. It goes in steps, and every choice is seeded by the line itself, so a line
+// always comes out the same at the same step (no flicker) and stays readable even when he's at his worst.
+const VOWEL = /[аеёиоуыэюя]/i, LETTER = /[а-яё]/i, CONSONANT = /[бвгджзклмнпрстфхцчшщ]/i;
+export function slur(text, drunk) {
+  const lvl = drunk >= 70 ? 3 : drunk >= 50 ? 2 : drunk >= 30 ? 1 : 0;
+  if (!lvl || !LETTER.test(text)) return text;
+  let h = 2166136261;
+  for (const ch of text) h = Math.imul(h ^ ch.codePointAt(0), 16777619);
+  // one random stream per effect, so one effect's picks don't move the others'
+  const stream = (salt) => {
+    let x = (h ^ Math.imul(salt, 0x9e3779b1)) >>> 0;
+    return () => (x = (Math.imul(x, 1664525) + 1013904223) >>> 0) / 4294967296;
+  };
+  const words = text.split(' ').map((w) => [...w]);
+  const letters = (w) => w.filter((c) => LETTER.test(c)).length;
+  const long = words.flatMap((w, i) => (letters(w) >= 3 ? [i] : []));
+  // drawn-out vowels: in one word at first, in more of them the drunker he is
+  const r1 = stream(1), n = lvl === 1 ? 2 : 3;
+  const draw = (i) => {
+    const v = words[i].flatMap((c, k) => (VOWEL.test(c) ? [k] : []));
+    if (!v.length) return false;
+    const k = v[Math.floor(r1() * v.length)];
+    words[i][k] = words[i][k].repeat(n);
+    return true;
+  };
+  let drawn = 0;
+  for (const i of long) if (r1() < [0, 0.2, 0.35, 0.5][lvl] && draw(i)) drawn++;
+  if (!drawn && long.length) draw(long[Math.floor(r1() * long.length)]);
+  // a stutter on the first letter: «С-сука», and on one more word at the worst
+  if (lvl >= 2) {
+    const r2 = stream(2);
+    const first = words.findIndex((w) => LETTER.test(w[0] ?? ''));
+    const more = lvl >= 3 && long.length > 2 ? long[1 + Math.floor(r2() * (long.length - 1))] : -1;
+    for (const i of new Set([first, more])) {
+      if (i < 0 || !LETTER.test(words[i][0])) continue;
+      const head = words[i][0], rest = words[i].slice(1).join(''); // the first letter may be drawn out already
+      words[i][0] = `${head[0]}-${rest && rest === rest.toUpperCase() ? head : head.toLowerCase()}`;
+    }
+  }
+  // swallowed letters at the worst: a consonant from inside a long word, two words at most
+  if (lvl >= 3) {
+    const r3 = stream(3);
+    let gone = 0;
+    for (const i of long) {
+      if (gone >= 2 || letters(words[i]) < 5 || r3() > 0.5) continue;
+      const inner = words[i].flatMap((c, k) => (k > 1 && k < words[i].length - 2 && CONSONANT.test(c) ? [k] : []));
+      if (!inner.length) continue;
+      words[i].splice(inner[Math.floor(r3() * inner.length)], 1);
+      gone++;
+    }
+  }
+  // a hiccup: half the lines from the second step, every line at the worst
+  const out = words.map((w) => w.join(''));
+  if (lvl >= 3 || (lvl === 2 && stream(4)() < 0.5)) {
+    if (out.length >= 5) out.splice(2 + Math.floor(stream(5)() * (out.length - 3)), 0, '…ик…');
+    else out.push('…ик');
+  }
+  return out.join(' ');
+}
+
 export class Friend extends Walker {
   constructor(game, id) {
     const def = CHARS[id];
@@ -508,6 +570,8 @@ export class Friend extends Walker {
     this.talkCooldown = 0;
     this.seed = Math.random() * 10;
     this.figure.root.userData.friend = this;
+    // his bubbles come out slurred when he's drunk (not in the story's scenes after the night: their lines stay clean)
+    this.figure.setSlur?.((text) => (this.game.over ? text : slur(text, this.drunk)));
     const spot = SPOTS[def.start];
     this.place(spot);
     const act = Object.entries(ACTIVITIES).find(([, a]) => a.spots.includes(def.start))?.[0];
@@ -533,7 +597,12 @@ export class Friend extends Walker {
   // play one of his recorded clips (src/assets/voice/<id>_<kind>_N.mp3); the sound follows him
   voice(kind, opts = {}) {
     if (this.game.hushed) return null; // someone is at the door: everybody keeps quiet
-    return this.game.voices?.play(`${this.id}_${kind}`, { pos: () => this.pos, ...opts });
+    return this.game.voices?.play(`${this.id}_${kind}`, { pos: () => this.pos, rate: this.voiceRate, ...opts });
+  }
+
+  // drunk, he talks slower and lower: the clip is played back slowed down (1 sober → 0.85 wasted)
+  get voiceRate() {
+    return 1 - 0.15 * Math.min(1, Math.max(0, (this.drunk - 20) / 55));
   }
 
   unusedMonolog() {
@@ -544,7 +613,7 @@ export class Friend extends Walker {
   speak(kind = 'monolog', text = null) {
     const h = kind ? this.voice(kind) : null;
     if (!h && !text) return false;
-    this.figure.say(text ?? '…', h ? Math.max(2.5, h.audio.duration || 4) : 3.5);
+    this.figure.say(text ?? '…', h ? Math.max(2.5, (h.audio.duration || 4) / (h.rate ?? 1)) : 3.5);
     if (/сук/i.test(text ?? '')) this.figure.play('shout');
     else if (!this.figure.busy) this.figure.play(this.fun > 60 ? 'laugh' : 'talk', { dur: 3 });
     return true;

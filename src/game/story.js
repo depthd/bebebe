@@ -1,4 +1,4 @@
-// The story around the nights (docs/CONCEPT.md, «Сюжет»): a title card before every night, a short scene after
+// The story around the nights (docs/CONCEPT.md, «Сюжет»): a title card and a toast before every night, a short scene after
 // each won night (and one more before the fifth), the truth after the fifth, and the credits that never end.
 // A scene takes the camera like the close-ups do and gives everything back when it ends: the light, the sky,
 // whoever it hid, the props it brought. Any key or click moves the lines on, Esc skips the scene, M ends the credits.
@@ -351,6 +351,134 @@ async function truth(s) {
 
 const SCENES = { after1: emptyFlat, after2: dejaVu, after3: glass, after4: bat, before5: pcScene, truth };
 
+// ---------- the toast at the start of every night ----------
+// after the night's card: the vodka bottle off the party table pours down a row of shot glasses, one after
+// another, and somebody says it (any key skips). Who says what, night by night (the fifth is the day after)
+const TOASTS = [['alexey', 'За Олега!'], ['lyokha', 'Ну, за именинника!'], ['kirill', 'За Олега! Как в первый раз.'], ['temych', 'Ещё раз за Олега.'], ['alexey', 'За Олега! С прошедшим!']];
+// five glasses in a slanting row by the near edge of the table, between the salt and the plate (x, z)
+const SHOTS = [[5.92, 3.12], [5.88, 3.18], [5.84, 3.24], [5.8, 3.3], [5.76, 3.36]];
+const TABLE_Y = 0.76;
+
+// a faceted shot glass with its vodka (scaled from empty to full); the rim catches the light, so an empty one reads
+const RIM = new THREE.MeshStandardMaterial({ color: '#f4fbff', roughness: 0.1 });
+RIM.userData.shared = true; // stays for the next night's toast
+function makeShot(glass, vodka) {
+  const g = new THREE.Group();
+  const wall = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.017, 0.064, 8, 1, true).translate(0, 0.032, 0), glass);
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.017, 0.018, 0.012, 8).translate(0, 0.006, 0), glass);
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(0.0215, 0.0011, 4, 16).rotateX(Math.PI / 2).translate(0, 0.064, 0), RIM);
+  const drink = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.0165, 0.048, 8).translate(0, 0.024, 0), vodka);
+  drink.position.y = 0.012;
+  drink.scale.y = 0.001;
+  drink.renderOrder = 1; // inside the glass: drawn before it
+  wall.renderOrder = base.renderOrder = 2;
+  g.add(drink, wall, base, rim);
+  g.userData.drink = drink;
+  return g;
+}
+
+// the bottle hangs from its mouth, so tilting it pours from where the mouth is
+function makePour() {
+  const pivot = new THREE.Group();
+  const bottle = makeBottle('vodka');
+  bottle.traverse((o) => o.material && (o.material.userData.shared = true)); // goods.js shares them
+  let cap = null, top = -1;
+  bottle.traverse((o) => {
+    if (!o.isMesh) return;
+    o.geometry.computeBoundingBox();
+    if (o.geometry.boundingBox.max.y > top) [cap, top] = [o, o.geometry.boundingBox.max.y];
+  });
+  if (cap) cap.visible = false; // the cap is off
+  const mouth = cap ? cap.geometry.boundingBox.min.y : 0.29;
+  bottle.position.y = -mouth;
+  pivot.add(bottle);
+  return pivot;
+}
+
+// where the bottle is at time t of the pour (mouth position, tilt) and which glass is filling, how far
+function pourAt(t) {
+  const UP = 0.62, FILL = 0.42, MOVE = 0.13, start = SHOTS[0];
+  const lift = [5.755, TABLE_Y + 0.29, 3.16]; // the table's own bottle, picked up
+  const over = (i) => [SHOTS[i][0], TABLE_Y + 0.15, SHOTS[i][1] - 0.012];
+  const mix = (a, b, k) => a.map((v, i) => v + (b[i] - v) * k);
+  if (t < UP) {
+    const k = smooth(t / UP);
+    return { at: mix(lift, over(0), k), tilt: 2.0 * smooth(Math.max(0, (t - 0.15) / (UP - 0.15))), glass: -1 };
+  }
+  t -= UP;
+  for (let i = 0; i < SHOTS.length; i++) {
+    if (t < FILL) return { at: over(i), tilt: 2.0 + 0.08 * Math.sin(t * 9), glass: i, fill: t / FILL };
+    t -= FILL;
+    if (i < SHOTS.length - 1 && t < MOVE) return { at: mix(over(i), over(i + 1), smooth(t / MOVE)), tilt: 1.92, glass: -1 };
+    if (i < SHOTS.length - 1) t -= MOVE;
+  }
+  // done: up and away to the right, upright again
+  const k = smooth(Math.min(1, t / 0.5));
+  return { at: mix(over(SHOTS.length - 1), [start[0] + 0.15, TABLE_Y + 0.55, start[1] - 0.45], k), tilt: 2.0 * (1 - k), glass: -1, done: k >= 1 };
+}
+
+async function toast(s, n) {
+  const { game } = s;
+  const glass = new THREE.MeshStandardMaterial({ color: '#f2f8fa', transparent: true, opacity: 0.2, roughness: 0.05, side: THREE.DoubleSide, depthWrite: false });
+  // vodka is clear: some blue and a little shine, or a full glass looks like an empty one on the white cloth
+  const vodka = new THREE.MeshStandardMaterial({ color: '#9ccfe8', emissive: '#4f93b6', emissiveIntensity: 0.45, transparent: true, opacity: 0.78, roughness: 0.03, depthWrite: false });
+  const shots = SHOTS.map(([x, z]) => {
+    const g = s.prop(makeShot(glass, vodka));
+    g.position.set(x, TABLE_Y, z);
+    g.rotation.y = x * 7 + z * 3; // the facets not all in line
+    return g;
+  });
+  const stream = s.prop(new THREE.Mesh(new THREE.CylinderGeometry(0.0034, 0.0028, 1, 6).translate(0, -0.5, 0), new THREE.MeshStandardMaterial({ color: '#e8f6fc', emissive: '#9cc8dc', emissiveIntensity: 0.6, transparent: true, opacity: 0.85, roughness: 0.02, depthWrite: false })));
+  stream.visible = false;
+  const pour = s.prop(makePour());
+  s.hide(game.tableProps?.vodka?.[0]); // that's the bottle he picked up
+  // the guys at the table move a little, nobody's name over his head
+  for (const f of game.friends) {
+    f.figure.showName?.(false);
+    s.animate(f.figure);
+  }
+  const [who, text] = TOASTS[Math.min(n, TOASTS.length) - 1];
+  const speaker = game.friends.find((f) => f.id === who);
+  let t = 0;
+  let poured = 0;
+  s.every((dt) => {
+    t += dt;
+    const p = pourAt(t);
+    pour.position.set(...p.at);
+    pour.rotation.set(p.tilt, 0, 0); // about x: the body goes up and to the right of the row, the mouth down into it
+    const flowing = p.tilt > 1.7 && !p.done;
+    stream.visible = flowing;
+    if (flowing) {
+      const g = p.glass >= 0 ? shots[p.glass] : null;
+      const surface = g ? TABLE_Y + 0.012 + 0.048 * Math.max(0.05, g.userData.drink.scale.y) : TABLE_Y;
+      stream.position.set(p.at[0], p.at[1] - 0.004, p.at[2]);
+      stream.scale.set(1 + 0.15 * Math.sin(t * 40), Math.max(0.01, p.at[1] - 0.004 - surface), 1 + 0.15 * Math.sin(t * 40));
+    }
+    if (p.glass >= 0) {
+      shots[p.glass].userData.drink.scale.y = Math.max(0.001, smooth(Math.min(1, p.fill)) * 0.92);
+      if (p.glass >= poured) {
+        poured = p.glass + 1;
+        if (p.glass % 2 === 0) s.sfx('splash');
+      }
+    }
+    for (let i = 0; i < Math.min(poured - 1, shots.length); i++) shots[i].userData.drink.scale.y = 0.92;
+  });
+  s.cut();
+  s.cam({ pos: [6.42, 1.24, 3.5], at: [5.84, 0.8, 3.22], fov: 50 });
+  s.fade(0, 0.5);
+  s.move({ pos: [6.36, 1.2, 3.48], at: [5.83, 0.8, 3.26], fov: 50 }, 3.6);
+  await s.wait(3.45);
+  // and up: the two at the table, the glasses go up
+  s.move({ pos: [6.85, 1.52, 4.3], at: [5.2, 1.3, 3.72], fov: 54 }, 0.9);
+  await s.wait(0.35);
+  for (const f of game.friends) f.figure.play(f === speaker ? 'shout' : 'laugh');
+  s.line(text, { who: speaker?.name ?? null, sec: 2 });
+  await s.wait(0.9);
+  s.sfx('ding');
+  await s.wait(0.5);
+  await s.fade(1, 0.4);
+}
+
 // ---------- credits ----------
 const CAST = [
   ['Олег', 'именинник'],
@@ -403,6 +531,7 @@ export function createStory({ scene, camera, game, apt, sfx }) {
   const el = {
     root: $('story'), line: $('story-line'), card: $('story-card'), date: $('story-date'), text: $('story-text'),
     credits: $('credits'), roll: $('credits-roll'), note: $('credits-note'), skip: $('credits-skip'),
+    hint: document.querySelector('#story .story-hint'),
   };
   const out = { black: 0, drunk: 0, clock: null };
   const view = { pos: new THREE.Vector3(), yaw: 0, pitch: 0, fov: FOV };
@@ -560,6 +689,14 @@ export function createStory({ scene, camera, game, apt, sfx }) {
       clear() {
         setLine(null);
       },
+      // the small print in the corner, for this scene
+      hint(text) {
+        const h = el.hint;
+        if (!h) return;
+        const was = h.textContent;
+        h.textContent = text;
+        r.undo.push(() => (h.textContent = was));
+      },
       // a black card with a date and a line
       async card(date, text, { sec = 2.8, big = false } = {}) {
         showCard(date, text, big);
@@ -602,6 +739,17 @@ export function createStory({ scene, camera, game, apt, sfx }) {
           b.position.set(x, 0.035, z);
           s.prop(b);
         }
+      },
+      // something of the game's out of the shot until the scene is over
+      hide(obj) {
+        if (!obj) return;
+        const was = obj.visible;
+        obj.visible = false;
+        r.undo.push(() => (obj.visible = was));
+      },
+      // a figure of the game's (one of the guys) moves on his own during the scene
+      animate(fig) {
+        if (fig && !r.figs.includes(fig)) r.figs.push(fig);
       },
       // the man in the black suit at (x, z), facing a point
       suit([x, z], [tx, tz], opts) {
@@ -884,11 +1032,14 @@ export function createStory({ scene, camera, game, apt, sfx }) {
       if (!fn) return Promise.resolve();
       return start('scene', fn, id);
     },
-    // the card before night n
+    // the card before night n, then the toast at the table
     card(n) {
-      return start('card', async (s) => {
+      return start('card', async (s, r) => {
         out.black = 1;
         await s.card(dateOf(n).text, INTRO[n - 1] ?? '');
+        r.quick = true; // the toast is short: any key skips all of it
+        s.hint('Любая клавиша — пропустить');
+        await toast(s, n);
       });
     },
     credits,
@@ -900,7 +1051,7 @@ export function createStory({ scene, camera, game, apt, sfx }) {
         if (kind === 'm' || kind === 'skip') creditsSkip(r);
         return;
       }
-      if (kind === 'skip') return finish(r);
+      if (kind === 'skip' || r.quick) return finish(r);
       const w = r.waits.find((x) => x.line);
       if (w) release(r, w);
     },

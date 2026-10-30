@@ -22,6 +22,7 @@ import { createLightPool } from './world/lightpool.js';
 import { createPerf } from './perf.js';
 import { loadModels } from './world/models.js';
 import { createFilters } from './filters.js';
+import { createPeephole } from './world/peephole.js';
 
 const params = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
@@ -63,6 +64,7 @@ const hands = createViewmodel(camera);
 let mirror = null; // created at boot, once the head style is known
 let phoneBob = 0;
 const fx = makeFX(renderer, scene, camera);
+const peephole = createPeephole(renderer); // the front door's fisheye (game.peephole)
 // "Oleg's eyes": full-screen looks, V cycles (Shift+V back), remembered in the browser
 const filters = createFilters(fx.composer, $('filter-ov'));
 filters.setSize(innerWidth, innerHeight, renderer.getPixelRatio());
@@ -89,7 +91,7 @@ window.__playScene = (id) => toStory(story.scene(id), () => (game.over ? showEnd
 const storyOn = () => !params.has('nostory') && !params.has('play') && !params.has('bench') && !attract;
 // close-up hands-on scenes (pelmeni): the mouse is free, the camera flies in, the world slows down
 // close-ups where the camera flies to something and the mouse works on it: the pelmeni pot, the PC
-const focuser = () => (game.cooking.focus ? game.cooking : game.pc.focus ? game.pc : null);
+const focuser = () => (game.cooking.focus ? game.cooking : game.pc.focus ? game.pc : game.peephole.focus ? game.peephole : null);
 const focusActive = () => !!focuser();
 const mini = { get active() { return focusActive(); } };
 const mouseNdc = new THREE.Vector2();
@@ -227,6 +229,7 @@ function setPhone(open, relock = true) {
   phoneOpen = open;
   show('phone', open);
   if (open && game.visitor) hud.showCam(); // someone knocks: straight to the door camera
+  else if (open) hud.showHome();
   if (open) document.exitPointerLock?.();
   else if (relock && mode === 'play') lock();
 }
@@ -404,6 +407,7 @@ document.addEventListener('mousedown', (e) => {
   }
   if (e.button !== 0 || mode !== 'play' || phoneOpen || (!locked && !focusActive())) return;
   if (photoMode) return void (snapRequested = true);
+  if (game.peephole.focus) return void game.peephole.cancel(); // a click takes the eye off the peephole
   use.down = true;
   use.pressed = true;
 });
@@ -435,8 +439,9 @@ addEventListener('keydown', (e) => {
   if (e.repeat) return;
   const k = e.code;
   if (focusActive()) {
-    if (k === 'Escape') {
-      escHeld = true;
+    // Esc leaves a close-up; any key does it at the peephole
+    if (k === 'Escape' || focuser().anyKey) {
+      escHeld = k === 'Escape';
       focuser().cancel();
     }
     return;
@@ -449,6 +454,7 @@ addEventListener('keydown', (e) => {
     escHeld = true;
     return setPhone(false, false);
   }
+  if (phoneOpen && k === 'Backspace') return hud.phoneBack(); // the phone's own «back»
   if (phoneOpen || game.oleg.blackout > 0 || game.talkLocked) return;
   if (k.startsWith('Digit')) {
     const n = Number(k.slice(5));
@@ -686,6 +692,7 @@ function tick(now) {
   perf.renderStart();
   if (!perf.cfg.render) { /* benchmark: logic only */ }
   else if (mode === 'orbit') renderer.render(scene, orbitCam);
+  else if (mode === 'play' && game.peephole.focus) peephole.render(scene, game.peephole.focus.cam, time);
   else if (perf.cfg.post) fx.render();
   else renderer.render(scene, camera); // benchmark: no post-processing
   if (snapRequested) {

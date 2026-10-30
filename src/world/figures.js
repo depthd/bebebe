@@ -106,6 +106,7 @@ export function textSprite(text, { bg = 'rgba(20,18,24,0.78)', fg = '#fff', size
 // Name tag, problem bubble and speech bubble shared by both character styles.
 function makeTags(root, name, label) {
   let nameTag = null, bubble = null, bubbleText = null, speech = null, speechLeft = 0, bounce = 0;
+  let slur = null; // text -> how he says it right now (drunk speech, game/friends.js)
   let baseY = 2.0;
   if (label) {
     nameTag = textSprite(name);
@@ -141,13 +142,16 @@ function makeTags(root, name, label) {
     showName(v) {
       if (nameTag) nameTag.visible = v;
     },
+    setSlur(fn) {
+      slur = fn;
+    },
     say(text, seconds = 3.5) {
       if (speech) {
         root.remove(speech);
         speech.material.map.dispose();
         speech.material.dispose();
       }
-      speech = textSprite(`«${text}»`, { bg: 'rgba(250,246,236,0.95)', fg: '#1b1408', size: 34 });
+      speech = textSprite(`«${slur ? slur(text) : text}»`, { bg: 'rgba(250,246,236,0.95)', fg: '#1b1408', size: 34 });
       speechLeft = seconds;
       root.add(speech);
       place();

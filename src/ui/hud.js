@@ -4,6 +4,7 @@ import { ITEMS } from '../game/game.js';
 import { iconURL, iconImg, hasRealIcon } from './icons.js';
 import { moodFace, moodState } from '../world/faces.js';
 import { dateOf } from '../game/story.js';
+import { createPhone } from './phone.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -33,8 +34,8 @@ export function createHUD({ onBuy }) {
     hud: $('hud'), night: $('night'), time: $('time'), room: $('room'), courier: $('courier-chip'),
     energy: $('bar-energy'), ofun: $('bar-ofun'), othirst: $('othirst'), handName: $('hand-name'), total: $('bar-total'), hut: $('bar-hut'), noise: $('bar-noise'), anger: $('anger'), people: $('people'), toasts: $('toasts'),
     prompt: $('prompt'), hotbar: $('hotbar'), doorAlert: $('door-alert'), blackout: $('blackout'),
-    phone: $('phone'), phoneTime: $('phone-time'), phoneMoney: $('phone-money'),
-    tabCam: $('tab-cam'), tabShop: $('tab-shop'), cam: $('phone-cam'), camView: $('cam-view'), camWho: $('cam-who'),
+    phone: $('phone'), phoneMoney: $('phone-money'), shopMoney: $('shop-money'),
+    cam: $('phone-cam'), camView: $('cam-view'), camWho: $('cam-who'),
     shop: $('phone-shop'), shopList: $('shop-list'), shopTotal: $('shop-total'), orders: $('orders'),
     slide: $('slide'), slideKnob: $('slide-knob'), slideFill: $('slide-fill'), slideText: $('slide-text'),
   };
@@ -49,8 +50,6 @@ export function createHUD({ onBuy }) {
   const items = TUNE.shop.filter((s) => !s.soon);
   const cart = Object.fromEntries(items.map((it) => [it.id, 0]));
   let money = 0;
-  $('ico-cam').src = iconURL('camera');
-  $('ico-shop').src = iconURL('cart');
   const total = () => items.reduce((sum, it) => sum + cart[it.id] * it.price, 0);
   const renderShop = () => {
     el.shopList.innerHTML = items
@@ -101,14 +100,8 @@ export function createHUD({ onBuy }) {
   });
   renderShop();
 
-  const tab = (which) => {
-    el.tabCam.classList.toggle('on', which === 'cam');
-    el.tabShop.classList.toggle('on', which === 'shop');
-    el.cam.hidden = which !== 'cam';
-    el.shop.hidden = which !== 'shop';
-  };
-  el.tabCam.addEventListener('click', () => tab('cam'));
-  el.tabShop.addEventListener('click', () => tab('shop'));
+  // the phone itself: home screen, apps, texts, gallery (ui/phone.js); the camera and the shop live in it
+  const phone = createPhone({ avatar });
 
   el.olegAva = $('oleg-ava');
   const paint = (node, m, self = false) => {
@@ -125,10 +118,17 @@ export function createHUD({ onBuy }) {
     el,
     reset() {
       cache = {};
+      phone.reset();
     },
-    // someone knocks: the phone opens on the door camera
+    // someone knocks: the phone opens on the door camera; otherwise on the home screen
     showCam() {
-      tab('cam');
+      phone.open('cam');
+    },
+    showHome() {
+      phone.open('home');
+    },
+    phoneBack() {
+      phone.back();
     },
     // progress of a hands-on action, under the crosshair
     setUse(h) {
@@ -215,9 +215,10 @@ export function createHUD({ onBuy }) {
       if (game.visitor) set('doorAlert', el.doorAlert, `${esc(game.doorNews)} · F — камера`);
       el.blackout.hidden = !(game.oleg.blackout > 0);
 
+      phone.update(game); // texts arrive with the phone in the pocket too
       if (!el.phone.hidden) {
-        el.phoneTime.textContent = `${game.clock} · ${dateOf(game.night).short}`;
         set('money', el.phoneMoney, `${iconImg('money', '')}${st.money} ₽`);
+        set('shopMoney', el.shopMoney, `${st.money} ₽`);
         if (money !== st.money) {
           money = st.money;
           updateSlide();
