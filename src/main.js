@@ -57,6 +57,9 @@ scene.add(outside.group);
 apt.ceiling.add(outside.ceiling);
 const player = new Player(camera, [...apt.colliders, ...furn.colliders, ...outside.colliders]);
 player.floorAt = outside.heightAt;
+// smart sound: what's between Oleg and a sound depends on these doors and the balcony sash being open
+audio.setWorld({ isOpen: (id) => (id === 'sash' ? !!game.living?.windowOpen : !!apt.doors[id]?.open) });
+outside.edges.onCarPass = (pos, speed) => audio.sfx.car(pos, speed); // a car on the highway goes by him
 ragdoll.addStatics(apt.colliders, 2.6); // walls for the ragdolls
 ragdoll.addStatics(furn.colliders, 0.8); // furniture, each as tall as it's drawn (they bump into it, fall over it)
 scene.add(camera); // the first-person hands hang off the camera
@@ -653,8 +656,8 @@ function tick(now) {
       hud.lastTarget = target;
       hud.update(game, { roomName: roomAt(player.x, player.z)?.name ?? outside.zoneName(player.x, player.z), target, actions: target?.actions?.() ?? [] });
     }
-    audio.setMusic(game.state.music && !game.hushed); // the music goes quiet while someone knocks
-    audio.voices.update([player.x, player.z]);
+    audio.setMusic(game.state.music && !game.hushed, game.state.volume); // the music goes quiet while someone knocks
+    audio.voices.update([player.x, player.z, player.floorY]);
   } else {
     hands.root.visible = false;
     audio.setMusic(false);
@@ -687,6 +690,7 @@ function tick(now) {
   filters.update(time, (mode === 'story' && story.clock) || game.clock, mode !== 'orbit', dateOf(game.night));
 
   const camR = mode === 'play' && hud.camRect(); // the phone's door camera on screen
+  outside.update(dt, mode === 'play' ? [player.x, player.z] : null); // the cars beyond the yard, the road works' lamps
   lightPool.update(dt, camR ? [camera, doorCam] : [mode === 'orbit' ? orbitCam : camera]);
   look?.update(dt, time);
   perf.renderStart();

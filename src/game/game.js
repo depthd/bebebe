@@ -2,7 +2,8 @@
 // puddles, broken things, the stove, the grill, the cat toy and Oleg himself.
 import * as THREE from 'three';
 import { TUNE } from '../config.js';
-import { TOY_SPOTS, VISITOR_SPOT, CAT_SPOTS, SPOTS, BOUNDS, BALCONY, START, roomAt } from '../world/layout.js';
+import { TOY_SPOTS, VISITOR_SPOT, CAT_SPOTS, SPOTS, BOUNDS, BALCONY, START, roomAt, planToWorld } from '../world/layout.js';
+import { stairsRoute } from '../world/outside.js';
 import { makePerson, makePuddle, makeToy, makeBottle, makePlate, makeBrokenMark, makeBucket } from '../world/figures.js';
 import { Friend, Cat, clamp, rand } from './friends.js';
 import { particles } from '../world/particles.js';
@@ -34,6 +35,37 @@ const FRIEND_IDS = ['alexey', 'lyokha', 'kirill', 'temych'];
 // "Пиво ×4, Пиво ×4, Пельмени" -> "Пиво ×4 — 2 шт., Пельмени"
 const summarize = (titles) => Object.entries(titles.reduce((m, t) => ((m[t] = (m[t] ?? 0) + 1), m), {})).map(([t, n]) => (n > 1 ? `${t} — ${n} шт.` : t)).join(', ');
 const BREAKABLE = ['stenka', 'ficus', 'microwave', 'sisterDesk', 'kitchenTable', 'wardrobe', 'loftBed', 'olegBed', 'sofa'];
+
+// Visitors come on foot (stairsRoute in world/outside.js) and leave the same way. Every leg of a walk is timed in
+// advance (stairs are slower), so where someone is at any moment is known: the courier knocks right when his ETA
+// runs out. Waiting spots: on the landing, out of the way of the door and the stairs, while someone else is at the door.
+const PACE = { flat: 1.5, up: 0.95, down: 1.15 }; // m/s along the floor
+// someone called by an event (the noise, a timeout) turns up this many seconds of walk from the door, on the top steps
+// below his landing: he knocks practically when he did before he walked (only a known timer lets him set off early)
+const LAST = 1.9;
+const WAIT_SPOTS = [planToWorld.pt(10.15, 4.05), planToWorld.pt(10.2, 5.85)];
+const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+function walkOf(pts, y0, floorAt) {
+  const ys = [y0], durs = [];
+  for (let i = 1; i < pts.length; i++) {
+    const [ax, az] = pts[i - 1], [bx, bz] = pts[i], len = Math.hypot(bx - ax, bz - az), n = Math.ceil(len / 0.1);
+    let y = ys[i - 1];
+    for (let k = 1; k <= n; k++) y = floorAt(ax + ((bx - ax) * k) / n, az + ((bz - az) * k) / n, y);
+    const dy = y - ys[i - 1];
+    ys.push(y);
+    durs.push(len / (Math.abs(dy) < 0.2 ? PACE.flat : dy > 0 ? PACE.up : PACE.down));
+  }
+  return { pts, ys, durs, total: durs.reduce((a, b) => a + b, 0), t: 0 };
+}
+// where the walk has him at w.t: the point, the floor under it (heightAt from the leg's own height), the heading
+function walkAt(w, floorAt) {
+  let t = Math.min(w.t, w.total), i = 0;
+  while (i < w.durs.length - 1 && t > w.durs[i]) t -= w.durs[i++];
+  const f = w.durs[i] ? Math.min(1, t / w.durs[i]) : 1;
+  const [ax, az] = w.pts[i], [bx, bz] = w.pts[i + 1], len = Math.hypot(bx - ax, bz - az) || 1;
+  const x = ax + (bx - ax) * f, z = az + (bz - az) * f, stairs = Math.abs(w.ys[i + 1] - w.ys[i]) >= 0.2;
+  return { i, x, z, y: floorAt(x, z, w.ys[i] + (w.ys[i + 1] - w.ys[i]) * f), dx: (bx - ax) / len, dz: (bz - az) / len, speed: w.durs[i] ? len / w.durs[i] : 0, stairs };
+}
 
 class Inventory {
   constructor(game) {
@@ -478,7 +510,7 @@ export class Game {
     this.toastKeys = {};
     this.over = null;
     this.orders = [];
-    for (const fig of [this.visitor?.figure, ...(this.leaving ?? []).map((l) => l.figure)]) {
+    for (const fig of [this.visitor?.figure, ...(this.visitorQueue ?? []).map((v) => v.figure), ...(this.leaving ?? []).map((l) => l.figure)]) {
       if (!fig) continue;
       this.dynamic.remove(fig.root);
       fig.dispose?.();
@@ -795,26 +827,33 @@ export class Game {
     this.state.totalFun -= TUNE.cat.fallPenalty;
     for (const f of this.friends) f.fun -= 15;
     this.alert('КОТ ВЫПАЛ С БАЛКОНА!', 'Балкон');
+    // the neighbour sets off from the yard at once, early enough to be at his door when the 20 s are up and she has
+    // picked the cat up; if Oleg gets down to him first, she turns back
+    const got = () => !c.gone || c.fall !== fall; // Oleg already went down and got him (a later fall has its own timer)
+    const nb = {
+      type: 'cat', name: 'Соседка с котом', shirt: '#8e6c8a', patience: 30,
+      onOpen: () => {
+        c.gone = false;
+        c.fall = null;
+        c.figure.root.visible = true;
+        c.fun = 50;
+        c.path = null;
+        c.mode = 'idle';
+        c.place(CAT_SPOTS.catHall);
+        this.toast('Соседка принесла кота. Живой! Второй этаж, кусты', 'good');
+      },
+      onTimeout: () => this.toast('Соседка ушла с котом… придёт ещё', 'bad'),
+      retry: true,
+      cancel: () => !nb.hasCat && got(),
+    };
+    const lead = this.visitorWalk('yard').total;
+    this.pending.push({ at: this.state.t + Math.max(0, 20 - lead), fn: () => got() || this.queueVisitor(nb, false, Math.max(0, lead - 20)) });
     this.pending.push({
       at: this.state.t + 20,
       fn: () => {
-        if (!c.gone || c.fall !== fall) return; // Oleg already went down and got him (a later fall has its own timer)
+        if (got()) return;
         c.takenAway(); // the neighbour picked him up in the yard
-        this.queueVisitor({
-          type: 'cat', name: 'Соседка с котом', shirt: '#8e6c8a', patience: 30,
-          onOpen: () => {
-            c.gone = false;
-            c.fall = null;
-            c.figure.root.visible = true;
-            c.fun = 50;
-            c.path = null;
-            c.mode = 'idle';
-            c.place(CAT_SPOTS.catHall);
-            this.toast('Соседка принесла кота. Живой! Второй этаж, кусты', 'good');
-          },
-          onTimeout: () => this.toast('Соседка ушла с котом… придёт ещё', 'bad'),
-          retry: true,
-        });
+        nb.hasCat = true;
       },
     });
   }
@@ -866,9 +905,103 @@ export class Game {
 
   // ---------- visitors & delivery ----------
 
-  queueVisitor(v, urgent = false) {
+  // someone sets off for the door: the neighbour from her flat below, everyone else from the yard; `ahead` = seconds
+  // of the walk already behind him (the courier and the cat's neighbour set off early, by their timers; anyone else
+  // turns up LAST seconds from the door). The queue is everyone on the way or waiting on the landing; `urgent` (the
+  // police) gets the door first; `v.cancel()` turns him back on the way
+  queueVisitor(v, urgent = false, ahead = null) {
+    v.from ??= v.type === 'neighbor' ? 'below' : 'yard';
+    v.figure = makePerson({ name: v.name, shirt: v.shirt, pants: v.pants, style: this.style });
+    v.walk = this.visitorWalk(v.from);
+    v.walk.t = Math.max(0, Math.min(ahead ?? v.walk.total - LAST, v.walk.total));
+    v.stage = 'up'; // up the stairs → 'wait' on the landing (the door is busy) → 'door' (walking to it) → knocking
+    v.side = 0;
+    this.dynamic.add(v.figure.root);
+    this.stepVisitor(v, 0);
     if (urgent) this.visitorQueue.unshift(v);
     else this.visitorQueue.push(v);
+    return v;
+  }
+
+  // the way to his door (with the last steps to it), or back down from where he stands now
+  visitorWalk(from, back = null) {
+    const floorAt = this.outside?.heightAt ?? (() => 0);
+    const r = stairsRoute(from);
+    if (back) return walkOf([[back.x, back.z], ...r.pts.slice().reverse()], back.y, floorAt);
+    return walkOf([...r.pts, VISITOR_SPOT], r.y, floorAt);
+  }
+
+  // his figure where the walk has him: feet on the stairs, a step aside when Oleg or someone coming the other way is
+  // in his way (he never blocks Oleg: nobody collides with him), facing where he goes, or the door while he waits
+  stepVisitor(q, dt) {
+    const floorAt = this.outside?.heightAt ?? (() => 0);
+    const w = q.walk, p = walkAt(w, floorAt), root = q.figure.root;
+    const moving = w.t < w.total && p.speed > 0;
+    const [ox, oz] = this.olegPos, nx = -p.dz, nz = p.dx;
+    const near = Math.hypot(ox - p.x, oz - p.z);
+    let [bx, bz, bd] = [ox, oz, near];
+    for (const o of [this.visitor, ...this.visitorQueue, ...(this.leaving ?? [])]) {
+      const r = o && o !== q && o.figure !== q.figure && o.figure.root.position;
+      const d = r && Math.abs(r.y - p.y) < 1 ? Math.hypot(r.x - p.x, r.z - p.z) : Infinity;
+      if (d < bd) [bx, bz, bd] = [r.x, r.z, d];
+    }
+    const want = moving && bd < 1.3 ? -Math.sign((bx - p.x) * nx + (bz - p.z) * nz || 1) * 0.4 : 0;
+    q.side += (want - q.side) * Math.min(1, dt * 5);
+    root.position.set(p.x + nx * q.side, p.y - (p.stairs ? 0.05 : 0), p.z + nz * q.side); // the ramp is above the treads
+    const [dx, dz] = this.doors.entrance.center;
+    const yaw = moving ? Math.atan2(p.dx, p.dz) : q.stage === 'wait' ? Math.atan2(dx - p.x, dz - p.z) : root.rotation.y;
+    root.rotation.y += dt ? wrap(yaw - root.rotation.y) * Math.min(1, dt * 8) : wrap(yaw - root.rotation.y);
+    q.figure.update(dt, moving ? { walking: true, speed: p.speed } : {});
+    // the name only up close or on the landing (the door camera and the peephole see it there), like the guys'
+    q.figure.showName?.(near < 3.2 || (p.y > -0.5 && roomAt(p.x, p.z)?.id === 'landing'));
+  }
+
+  // the knocking, the waiting on the landing, the walking back down (one at the door at a time: the next one steps
+  // up to it after the last has turned away)
+  tickVisitors(dt) {
+    this.visitorGap = Math.max(0, (this.visitorGap ?? 0) - dt);
+    const free = () => !this.visitor && this.visitorGap <= 0 && !this.visitorQueue.some((q) => q.stage === 'door');
+    // no longer needed (Oleg got the cat himself): back the way he came, from where he is
+    for (const q of this.visitorQueue.filter((o) => o.cancel?.())) {
+      this.visitorQueue.splice(this.visitorQueue.indexOf(q), 1);
+      const p = q.figure.root.position, i = walkAt(q.walk, () => p.y).i;
+      const walk = q.stage === 'up' ? walkOf([[p.x, p.z], ...q.walk.pts.slice(0, i + 1).reverse()], p.y, this.outside?.heightAt ?? (() => 0)) : this.visitorWalk(q.from, p);
+      this.leaving = [...(this.leaving ?? []), { v: q, figure: q.figure, walk, side: 0 }];
+    }
+    const arrived = [];
+    for (const q of this.visitorQueue) {
+      const w = q.walk;
+      w.t += dt;
+      if (q.stage === 'up' && w.t >= w.total - w.durs.at(-1)) {
+        // at the top of the stairs: on to the door, or aside to wait while someone else is at it
+        if (free()) q.stage = 'door';
+        else {
+          const taken = this.visitorQueue.filter((o) => o !== q && o.stage === 'wait').map((o) => o.spot);
+          q.spot = WAIT_SPOTS.find((s) => !taken.includes(s)) ?? WAIT_SPOTS[0];
+          q.stage = 'wait';
+          const p = q.figure.root.position;
+          q.walk = walkOf([[p.x, p.z], q.spot], 0, () => 0);
+        }
+      } else if (q.stage === 'wait' && free()) {
+        const p = q.figure.root.position;
+        q.stage = 'door';
+        q.walk = walkOf([[p.x, p.z], VISITOR_SPOT], 0, () => 0);
+      }
+      this.stepVisitor(q, dt);
+      if (q.stage === 'door' && q.walk.t >= q.walk.total) arrived.push(q);
+    }
+    for (const q of arrived) {
+      this.visitorQueue.splice(this.visitorQueue.indexOf(q), 1);
+      this.showVisitor(q);
+    }
+    for (const l of this.leaving ?? []) {
+      l.walk.t += dt;
+      this.stepVisitor(l, dt);
+      if (l.walk.t < l.walk.total) continue;
+      this.dynamic.remove(l.figure.root); // out of sight: back in her flat, or off into the dark of the yard
+      l.figure.dispose?.();
+    }
+    this.leaving = (this.leaving ?? []).filter((l) => l.walk.t < l.walk.total);
   }
 
   // what Oleg knows about who is knocking (HUD banner + door prompt): the name only once he saw that visitor
@@ -882,16 +1015,17 @@ export class Game {
     return 'Кто-то стучит';
   }
 
-  showVisitor(v) {
+  // he is at the door (walked up to it): the knocking and his patience start now. `quiet`: Oleg opened before he knocked
+  showVisitor(v, quiet = false) {
     v.left = v.patience;
     v.knockT = 0;
-    v.figure = makePerson({ name: v.name, shirt: v.shirt, pants: v.pants, style: this.style });
-    const [x, z] = VISITOR_SPOT;
-    v.figure.root.position.set(x, 0, z);
+    v.stage = 'knock';
+    const p = v.figure.root.position;
     const [dx, dz] = this.doors.entrance.center;
-    v.figure.root.rotation.y = Math.atan2(dx - x, dz - z);
-    this.dynamic.add(v.figure.root);
+    v.figure.root.rotation.y = Math.atan2(dx - p.x, dz - p.z);
+    v.figure.showName?.(true);
     this.visitor = v;
+    if (quiet) return;
     // someone knocks: the whole party shuts up (voices stop, music goes quiet) and hushes each other
     this.voices?.stopAll();
     this.koch = null;
@@ -1024,22 +1158,26 @@ export class Game {
     setTimeout(() => this.voices?.play('event_puke', { pos: [...f.pos] }), 1200); // after the splash, not before
   }
 
-  // the visitor turns and walks off down the stairs; the next one comes up only after that
+  // the visitor turns and walks back down the way he came; the next one steps up to the door only after that
   dismissVisitor() {
     const v = this.visitor;
     if (!v) return;
     this.visitor = null;
     this.visitorGap = 1.8;
-    const [dx, dz] = this.doors.entrance.center, [x, z] = VISITOR_SPOT;
-    const away = Math.atan2(x - dx, z - dz);
-    v.figure.root.rotation.y = away;
-    this.leaving = [...(this.leaving ?? []), { figure: v.figure, dir: [Math.sin(away), Math.cos(away)], t: 1.6 }];
+    const walk = this.visitorWalk(v.from ?? 'yard', v.figure.root.position);
+    this.leaving = [...(this.leaving ?? []), { v, figure: v.figure, walk, side: 0 }];
   }
 
   openEntrance() {
     const door = this.doors.entrance;
     door.setOpen(true);
     this.entranceCloseT = 2.5;
+    // opened on someone who is already out on the landing but hasn't knocked yet: he's the one at the door
+    const near = !this.visitor && this.visitorQueue.find((q) => q.figure.root.position.y > -0.5 && roomAt(q.figure.root.position.x, q.figure.root.position.z)?.id === 'landing');
+    if (near) {
+      this.visitorQueue.splice(this.visitorQueue.indexOf(near), 1);
+      this.showVisitor(near, true);
+    }
     const v = this.visitor;
     this.camSeen = null; // he sees who it is now
     if (!v) return this.toast('Никого нет', 'info');
@@ -1422,35 +1560,26 @@ export class Game {
       } else this.spawnNeighbor();
     }
 
-    // deliveries
+    // deliveries: the courier sets off across the yard early enough to knock right when the ETA runs out (an order
+    // quicker than his walk puts him partway along it); what's bought before then still goes into his bag
+    const lead = (this.courierLead ??= this.visitorWalk('yard').total);
     for (const order of this.orders) {
       order.eta -= dt;
-      if (order.eta <= 0 && !order.done) {
-        order.done = true;
-        this.queueVisitor({
+      if (!order.courier && order.eta <= lead) {
+        order.courier = this.queueVisitor({
           type: 'courier', name: 'Курьер', shirt: '#e0a21b', patience: TUNE.visitors.courierPatience,
           onOpen: () => {
             for (const [k, v] of Object.entries(order.gives)) st.fridge[k] = (st.fridge[k] ?? 0) + v;
           },
           onTimeout: () => this.toast(`Курьер ушёл с заказом (${order.title}). Деньги сгорели`, 'bad'),
-        });
+        }, false, lead - Math.max(0, order.eta));
       }
+      if (order.eta <= 0) order.done = true;
     }
     this.orders = this.orders.filter((x) => !x.done);
 
-    // visitor at the door (one at a time: the next waits until the last one has walked off)
-    for (const l of this.leaving ?? []) {
-      l.t -= dt;
-      l.figure.root.position.x += l.dir[0] * 1.2 * dt;
-      l.figure.root.position.z += l.dir[1] * 1.2 * dt;
-      l.figure.update(dt, { walking: true, speed: 1.2 });
-      if (l.t > 0) continue;
-      this.dynamic.remove(l.figure.root);
-      l.figure.dispose?.();
-    }
-    this.leaving = (this.leaving ?? []).filter((l) => l.t > 0);
-    this.visitorGap = Math.max(0, (this.visitorGap ?? 0) - dt);
-    if (!this.visitor && this.visitorQueue.length && this.visitorGap <= 0) this.showVisitor(this.visitorQueue.shift());
+    // visitors on the stairs and the landing; the one at the door knocks
+    this.tickVisitors(dt);
     const v = this.visitor;
     if (v) {
       v.left -= dt;
@@ -1465,7 +1594,7 @@ export class Game {
         if (this.camSeen && this.camSeen !== v) this.camSeen = null;
         this.dismissVisitor();
         v.onTimeout();
-        if (v.retry) this.pending.push({ at: st.t + 15, fn: () => this.queueVisitor({ ...v, figure: null }) });
+        if (v.retry) this.pending.push({ at: st.t + 15, fn: () => this.queueVisitor({ ...v, figure: null }) }); // turns up on the top steps again
       }
     }
 
@@ -1502,6 +1631,7 @@ export class Game {
   end(win, reason) {
     this.over = { win, reason, night: this.night };
     this.state.music = false;
+    for (const q of this.visitorQueue) q.figure.root.visible = false; // still on the stairs: not in the scenes after the night
     this.onEnd?.(this.over);
   }
 }

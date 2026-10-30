@@ -9,6 +9,7 @@ import { mat, boxGeo, worldUV } from './apartment.js';
 import * as T from './textures.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Batch, GLASS, cigarettes, pelmeniPack, chipsBag, signText } from './goods.js';
+import { buildYardEdges } from './yard.js';
 
 // Khrushchevka stairwell, Oleg on the 2nd floor. Out of his door onto the landing, then towards the
 // front of the house: a flight down to the half landing, a flight back to the 1st-floor landing (right
@@ -21,6 +22,30 @@ const TOP = [3.0, 3.5], FL = [1.0, 3.0], END = [0.0, 1.0]; // plan z: by his lan
 const DOOR = [9.0, 10.2]; // the entrance door (plan x) in the front wall
 const FRONT = { x0: -3, x1: 16, z0: -14, z1: -0.42 }; // the yard in front of the house
 const SHOP = { x0: 6.5, x1: 11, z0: -10.5, z1: -6.5, door: [8.2, 9.4] }; // across the yard, door towards the house
+
+// The way up to his door for whoever comes (game.js walks them): world [x, z] points from where they turn up to
+// the top of the stairs on his landing, and the floor height there (`y`; heightAt takes it from there).
+// 'yard' (courier, police): out of the dark by the right-hand fence, in at the entrance door, all three flights up;
+// 'below' (the neighbour): out of her door on the 1st floor, two flights up. Leaving is the same way back.
+export function stairsRoute(from) {
+  const A = (SX[0] + LANE) / 2, B = (LANE + SX[1]) / 2; // the middle of each lane
+  const z1 = (TOP[0] + 3.45) / 2, zh = END[1] / 2; // across the 1st-floor landing, across the half landing
+  const up = [[B, TOP[0]], [B, FL[0]], [B, zh], [A, zh], [A, FL[0]], [A, TOP[0]], [A, TOP[1] + 0.1]];
+  const dx = (DOOR[0] + DOOR[1]) / 2;
+  const pts = from === 'below'
+    ? [[SX[1] - 0.25, z1], [B, z1], ...up]
+    : [[15.4, -6.6], [12.6, -4.3], [10.4, -1.6], [dx, -0.9], [dx, -0.1], [A, zh + 0.05], [A, FL[0]], [A, TOP[0]], [A, z1], [B, z1], ...up];
+  return { pts: pts.map(([x, z]) => P.pt(x, z)), y: from === 'below' ? L1 : STREET };
+}
+
+// the place's name outside the flat (the HUD shows it; audio.js hears by it), null inside or nowhere
+export function zoneAt(x, z) {
+  const [px, pz] = worldToPlan(x, z);
+  if (px > SHOP.x0 && px < SHOP.x1 && pz > SHOP.z0 && pz < SHOP.z1) return 'Продукты 24';
+  if (pz < -1.3 || (pz < FRONT.z1 && !(px > 2.3 && px < 5.6))) return 'Двор';
+  if (px >= SX[0] - 0.2 && px <= SX[1] + 0.25 && pz >= -0.42 && pz < TOP[1]) return 'Подъезд';
+  return null;
+}
 
 // plan-space box -> world mesh (y in meters, not scaled)
 function pbox(group, x0, x1, y0, y1, z0, z1, m, uv) {
@@ -125,17 +150,16 @@ export function buildOutside() {
   pbox(group, FRONT.x0, FRONT.x1, STREET, STREET + 0.06, -1.9, FRONT.z1, mat('#55534f', { roughness: 1 })); // sidewalk
   pbox(group, -0.4, 8.5, STREET, -0.25, -0.5, -0.42, facade, 1); // the house below the flat's windows, up to the stairwell
   wall(-0.4, 8.3, -0.5, -0.42, { floor: [-9, -2] }); // street level only (the balcony door is right above)
-  const fence = mat('#3b4a3a', { metalness: 0.3 });
+  // the yard's edges: these colliders stay as they are, world/yard.js dresses them (the highway, the road works,
+  // the garages, «Проход закрыт» along the house) and runs the cars and the blinking lamps (update)
   for (const [x0, x1, z0, z1, streetOnly] of [
     [FRONT.x0, FRONT.x1, FRONT.z0 - 0.1, FRONT.z0],
     [FRONT.x0 - 0.1, FRONT.x0, FRONT.z0, FRONT.z1],
     [FRONT.x1, FRONT.x1 + 0.1, FRONT.z0, FRONT.z1],
     [FRONT.x0, -0.4, FRONT.z1 - 0.08, FRONT.z1 + 0.05, true],
     [10.9, FRONT.x1, FRONT.z1 - 0.08, FRONT.z1 + 0.05, true],
-  ]) {
-    pbox(group, x0, x1, STREET, STREET + 1.1, z0, z1, fence);
-    wall(x0, x1, z0, z1, streetOnly ? { floor: [-9, -2] } : {});
-  }
+  ]) wall(x0, x1, z0, z1, streetOnly ? { floor: [-9, -2] } : {});
+  const edges = buildYardEdges(group, { STREET, FRONT });
   for (const [x, z] of [[2, -3.2], [12.5, -3.2]]) {
     pbox(group, x - 0.06, x + 0.06, STREET, STREET + 4.2, z - 0.06, z + 0.06, railMat);
     pbox(group, x - 0.25, x + 0.25, STREET + 4.1, STREET + 4.25, z - 0.15, z + 0.15, new THREE.MeshBasicMaterial({ color: '#ffd59a' }));
@@ -322,13 +346,5 @@ export function buildOutside() {
     return cands.reduce((b, h) => (Math.abs(h - cur) < Math.abs(b - cur) ? h : b));
   }
 
-  function zoneName(x, z) {
-    const [px, pz] = worldToPlan(x, z);
-    if (px > S.x0 && px < S.x1 && pz > S.z0 && pz < S.z1) return 'Продукты 24';
-    if (pz < -1.3 || (pz < FRONT.z1 && !(px > 2.3 && px < 5.6))) return 'Двор';
-    if (px >= SX[0] - 0.2 && px <= SX[1] + 0.25 && pz >= -0.42 && pz < TOP[1]) return 'Подъезд';
-    return null;
-  }
-
-  return { group, ceiling, colliders, heightAt, zoneName, shelves, shopDoor, cashier, inShop: (x, z) => zoneName(x, z) === 'Продукты 24' };
+  return { group, ceiling, colliders, heightAt, zoneName: zoneAt, edges, update: (dt, ear) => edges.update(dt, ear), shelves, shopDoor, cashier, inShop: (x, z) => zoneAt(x, z) === 'Продукты 24' };
 }
