@@ -7,9 +7,11 @@ import { buildOutside } from './world/outside.js';
 import * as ragdoll from './world/ragdoll.js';
 import { roomAt, START, DOORCAM, SPOTS, CENTER } from './world/layout.js';
 import { Game } from './game/game.js';
+import { createStory, dateOf } from './game/story.js';
 import { Player } from './player.js';
 import { makeFX } from './fx.js';
 import { createHUD } from './ui/hud.js';
+import { createLED } from './ui/led.js';
 import { createViewmodel } from './world/viewmodel.js';
 import { createMirror } from './world/mirror.js';
 import { moodFace } from './world/faces.js';
@@ -23,6 +25,7 @@ import { createFilters } from './filters.js';
 
 const params = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
+createLED($('led'), $('menu')); // the shop's sign under the title screen, lit while the game loads too
 
 // ---------- renderer & scene ----------
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -77,6 +80,13 @@ game.attachOutside(outside);
 // art-style prototypes (?style=<id>, src/styles/): nothing loads without the parameter
 const look = params.has('style') ? await (await import('./styles/index.js')).applyStyle(params.get('style'), { scene, renderer, camera, composer: fx.composer, apt, furn, outside, game }) : null;
 const hud = createHUD({ onBuy: (cart) => game.buyCart(cart) });
+// the story: night cards, the scenes between the nights, the truth after the fifth, the credits (game/story.js)
+const story = createStory({ scene, camera, game, apt, sfx: audio.sfx });
+window.__story = story;
+// console: play any scene now (__playScene('after4')); afterwards back to the end screen or the night
+window.__playScene = (id) => toStory(story.scene(id), () => (game.over ? showEnd(game.over) : enterPlay(true)));
+// test runs (?play, the benchmark) and ?nostory get none of it, nor does the party behind the title
+const storyOn = () => !params.has('nostory') && !params.has('play') && !params.has('bench') && !attract;
 // close-up hands-on scenes (pelmeni): the mouse is free, the camera flies in, the world slows down
 // close-ups where the camera flies to something and the mouse works on it: the pelmeni pot, the PC
 const focuser = () => (game.cooking.focus ? game.cooking : game.pc.focus ? game.pc : null);
@@ -93,7 +103,8 @@ window.__game = game; // handy in the console
 window.__player = player;
 window.__spots = SPOTS;
 window.__three = THREE; // debugging: raycasts from the console
-const lightPool = createLightPool(scene, 6, (p) => { const r = p.y > -0.3 && roomAt(p.x, p.z); return r && r.id !== 'landing' ? 'flat' : 'out'; });
+// the title shot hangs out in the street but looks into the flat: it counts as inside
+const lightPool = createLightPool(scene, 6, (p) => { const r = p.y > -0.3 && roomAt(p.x, p.z); return (r && r.id !== 'landing') || (mode === 'menu' && attract) ? 'flat' : 'out'; });
 window.__renderer = renderer; window.__scene = scene;
 window.__tune = TUNE; // balance numbers, live
 window.__ragdoll = ragdoll; // physics debugging
@@ -118,15 +129,16 @@ function show(id, v) {
   $(id).hidden = !v;
 }
 
-// the benchmark looks at the party from the title-screen corner
+// the benchmark looks at the party from a corner of the living room (the old title shot: it stays, so runs compare)
 function benchView() {
   player.place(MENU_SHOT.x, MENU_SHOT.z, MENU_SHOT.yaw);
   player.pitch = MENU_SHOT.pitch;
 }
 
-// the title screen shows the party until the first night starts
+// the title screen shows the party until the first night starts: from the street, at the height of his balcony
 let attract = !params.has('play') && !params.has('x') && !params.has('bench');
 const MENU_SHOT = { x: 6.9, z: 7.0, yaw: 35 * (Math.PI / 180), pitch: -0.2 };
+const TITLE_SHOT = { x: 7.9, y: 1.75, z: -5.0, yaw: 3.3, pitch: -0.04, fov: 50 }; // world, a few metres out over the yard, the balcony on the right
 
 function startNight(n) {
   game.startNight(n);
@@ -151,14 +163,34 @@ function play() {
     startNight(game.night); // the party behind the title was only for show
   }
   if (!started || game.over) startNight(game.over?.win ? game.night + 1 : game.night);
-  mode = 'play';
   show('menu', false);
   show('end', false);
   show('orbit-bar', false);
-  show('hud', true);
   orbit.enabled = false;
   apt.ceiling.visible = true;
   lock();
+  // a night that hasn't begun yet opens on its card (the date and a line)
+  if (storyOn() && game.state.t === 0) return toStory(story.card(game.night), () => enterPlay(true));
+  enterPlay();
+}
+
+// relock: after a card or a scene, where Esc may have let the mouse go: ask again (or the «click» hint shows)
+function enterPlay(relock = false) {
+  mode = 'play';
+  show('hud', true);
+  if (relock && !locked) lock();
+}
+
+// a story piece takes the screen; then() runs when it's over, however it ended
+function toStory(promise, then) {
+  mode = 'story';
+  setPhone(false, false);
+  setPhotoMode(false);
+  for (const id of ['menu', 'end', 'hud', 'orbit-bar']) show(id, false);
+  promise.then(then).catch((e) => {
+    console.error(e);
+    if (mode === 'story') pause(); // never stuck in a scene: the menu can start the night again
+  });
 }
 
 function pause() {
@@ -202,11 +234,18 @@ function setPhone(open, relock = true) {
 game.onEnd = (res) => {
   if (attract) return startNight(game.night);
   if (perf.benching) return benchView(startNight(game.night)); // the benchmark outlives a lost night
-  mode = 'end';
   setPhone(false, false);
   document.exitPointerLock?.();
   audio.setMusic(false);
   show('hud', false);
+  // the fifth night won: the truth comes out first, then the credits, then the birthday card
+  if (res.win && res.night >= TUNE.nights && storyOn()) return toStory(story.scene('truth').then(() => story.credits()), () => showEnd(res));
+  showEnd(res);
+};
+
+function showEnd(res) {
+  mode = 'end';
+  document.exitPointerLock?.();
   const st = game.state;
   const last = res.win && res.night >= TUNE.nights;
   $('end-night').textContent = `Ночь ${res.night} из ${TUNE.nights}`;
@@ -239,7 +278,7 @@ game.onEnd = (res) => {
     }
   }
   show('end', true);
-};
+}
 
 $('btn-play').addEventListener('click', play);
 // any night straight from the menu, from its start
@@ -256,9 +295,19 @@ $('btn-filter').textContent = `Глаза Олега: ${filters.current.name}`;
 
 $('btn-back').addEventListener('click', pause);
 $('btn-next').addEventListener('click', () => {
-  const win = game.over?.win;
+  const win = game.over?.win, n = win ? game.night + 1 : game.night;
+  // a won night has its scene before the next one (and the fifth one more before it starts)
+  if (win && storyOn() && story.has(`after${game.night}`)) {
+    lock(); // this click is the gesture the mouse lock needs: the scene and the night after keep it
+    return toStory(story.scene(`after${game.night}`), () => {
+      game.over = null;
+      startNight(n);
+      if (story.has(`before${n}`)) return toStory(story.scene(`before${n}`), play);
+      play();
+    });
+  }
   game.over = null;
-  startNight(win ? game.night + 1 : game.night);
+  startNight(n);
   play();
 });
 $('btn-menu').addEventListener('click', () => {
@@ -349,6 +398,10 @@ function snap() {
 // left button while playing: hands-on actions (spray, scrub, pat, shake)
 const use = { down: false, pressed: false, mx: 0, my: 0 };
 document.addEventListener('mousedown', (e) => {
+  if (mode === 'story' && e.button === 0) {
+    if (!locked && story.leadsToPlay) lock(); // a click is a gesture: the night after the scene gets the mouse
+    return story.input('next');
+  }
   if (e.button !== 0 || mode !== 'play' || phoneOpen || (!locked && !focusActive())) return;
   if (photoMode) return void (snapRequested = true);
   use.down = true;
@@ -374,6 +427,9 @@ addEventListener('keydown', (e) => {
   if (perf.benching) return; // hands off while the benchmark runs
   if (e.code === 'KeyV' && !e.repeat && (mode === 'play' || mode === 'menu' || mode === 'end')) return nextFilter(e.shiftKey ? -1 : 1);
   if (mode === 'orbit' && e.code === 'Escape') return pause(); // back to the menu, like «← Меню»
+  // a scene: any key moves the lines on, M ends the credits; Esc skips on its keyup, since its keydown
+  // also drops the mouse lock, and the night after the scene must not take that for a pause
+  if (mode === 'story') return e.repeat || e.code === 'Escape' || story.input(e.code === 'KeyM' ? 'm' : 'next');
   if (mode !== 'play') return;
   player.keys.add(e.code);
   if (e.repeat) return;
@@ -412,6 +468,7 @@ addEventListener('keydown', (e) => {
   } else if (k === 'KeyT') game.olegDance(); // nothing to do with T here: dance
 });
 addEventListener('keyup', (e) => {
+  if (mode === 'story' && e.code === 'Escape') return story.input('skip');
   player.keys.delete(e.code);
   if (e.code === 'Escape' && escHeld) {
     escHeld = false;
@@ -598,19 +655,30 @@ function tick(now) {
     audio.voices.stopAll();
     if (mode === 'orbit') orbit.update();
     else if (mode === 'menu' && attract) {
-      // title screen: the party goes on by itself (no sound before the first click), seen from the corner
+      // title screen: the party goes on by itself (no sound before the first click), seen from the street
       game.olegPos = [99, 99]; // no name tags
       game.update(dt);
-      player.place(MENU_SHOT.x, MENU_SHOT.z, MENU_SHOT.yaw + Math.sin(time * 0.12) * 0.07);
-      player.pitch = MENU_SHOT.pitch;
-      player.update(0);
+      const s = TITLE_SHOT;
+      camera.position.set(s.x, s.y + Math.sin(time * 0.31) * 0.03, s.z);
+      camera.rotation.set(s.pitch, s.yaw + Math.sin(time * 0.12) * 0.025, 0);
     } else if (mode === 'menu' || mode === 'end') player.update(0);
   }
+  // the title shot is a longer lens
+  const fov = mode === 'menu' && attract ? TITLE_SHOT.fov : 80;
+  if (camera.fov !== fov) {
+    camera.fov = fov;
+    camera.updateProjectionMatrix();
+  }
+
+  // a story scene holds the camera, and its own lens (after the lens above, so the scene's wins)
+  if (mode === 'story') story.update(dt);
 
   drunkFx += ((mode === 'play' ? game.oleg.drunk / 100 : 0) - drunkFx) * Math.min(1, dt * 2);
   blackFx += ((mode === 'play' && game.oleg.blackout > 0 ? 1 : 0) - blackFx) * Math.min(1, dt * 3);
+  if (mode === 'story') [drunkFx, blackFx] = [story.drunk, story.black]; // the scene runs its own fades
   fx.set(time, drunkFx, blackFx);
-  filters.update(time, game.clock, mode !== 'orbit'); // the orbit view is drawn without the filter: no screen texts
+  // the orbit view is drawn without the filter: no screen texts
+  filters.update(time, (mode === 'story' && story.clock) || game.clock, mode !== 'orbit', dateOf(game.night));
 
   const camR = mode === 'play' && hud.camRect(); // the phone's door camera on screen
   lightPool.update(dt, camR ? [camera, doorCam] : [mode === 'orbit' ? orbitCam : camera]);

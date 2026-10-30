@@ -122,6 +122,10 @@ export const sfx = {
   shutter: () => (noise(0.04, { vol: 0.8, freq: 5000, q: 0.7 }), noise(0.06, { vol: 0.6, freq: 2500, q: 0.7, when: 0.08 })),
   squeak: () => tone(2400, 0.07, { type: 'sine', vol: 0.06, slide: 600 }), // the toy mouse under a paw
   shot: () => (noise(0.16, { vol: 0.7, freq: 1400, q: 0.5 }), tone(110, 0.12, { type: 'sine', vol: 0.25, slide: -60 })), // КС on the PC
+  // the story's scenes (game/story.js): a door behind you, steps, a bat to the head and the ringing after it
+  creak: () => (tone(170, 0.7, { type: 'sawtooth', vol: 0.035, slide: 110 }), tone(260, 0.45, { type: 'sawtooth', vol: 0.025, when: 0.3, slide: -90 })),
+  steps: () => [0, 0.42].forEach((w) => noise(0.08, { vol: 0.6, freq: 240, q: 1.6, when: w })),
+  bonk: () => (noise(0.14, { vol: 1.2, freq: 260, q: 1.1 }), tone(95, 0.35, { type: 'sine', vol: 0.6, slide: -55 }), tone(3100, 2.6, { type: 'sine', vol: 0.025, when: 0.08 })),
 };
 
 // Party music: a dumb 4-chord loop with a kick. Plays while the stereo is on.

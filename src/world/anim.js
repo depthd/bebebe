@@ -95,6 +95,13 @@ const PROPS = {
     for (let i = 0; i < 4; i++) g.add(new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.04).translate(0, 0, 0.22 + i * 0.055), mat('#6e3218')));
     return g;
   },
+  // the man in the black suit's baseball bat (story.js): handle in the fist, the thick end out past the
+  // knuckles (-z: the other way from the forearm), so with the arm up it stands up over his head
+  bat() {
+    const g = new THREE.Group();
+    g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.016, 0.8, 10).rotateX(-Math.PI / 2).translate(0, 0, -0.3), mat('#b98a52', { roughness: 0.55 })));
+    return g;
+  },
   phone() {
     const g = new THREE.Group();
     g.add(new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.15, 0.01), mat('#111')));
@@ -328,6 +335,16 @@ const LOOPS = {
     p.neck.x = 0.25 * Math.sin(c.beat * 2);
     Object.assign(p.arms[0], { x: -1.2 - 0.9 * up, z: -0.2, elbow: -1.2 + 0.5 * up });
     p.spine.z = 0.12 * Math.sin(c.beat / 2);
+  },
+  // the man in the black suit (story.js): bat up over his shoulder, about to swing
+  batRaise(p, c) {
+    const s = 0.05 * Math.sin(c.T * 2.4);
+    Object.assign(p.arms[0], { prop: 'bat', x: -2.6 + s, z: -0.45, elbow: -0.75 });
+    Object.assign(p.arms[1], { x: -0.6, z: 0.2, elbow: -0.7 });
+    p.spine.x = -0.12;
+    p.spine.y = 0.3;
+    p.neck.x = 0.12;
+    for (const [i, s2] of SIDES.entries()) Object.assign(p.legs[i], { z: s2 * 0.12, knee: 0.15 });
   },
 };
 

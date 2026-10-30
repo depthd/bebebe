@@ -186,7 +186,8 @@ export function buildApartment() {
     ceiling.add(shade);
   }
 
-  // --- night outside: yard, panel building across, moonlight
+  // --- night outside: yard, panel building across, moonlight (the story's scenes relight them: game/story.js)
+  const night = {};
   {
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(200, 200).rotateX(-Math.PI / 2), mat('#101418'));
     ground.position.y = -9;
@@ -198,7 +199,9 @@ export function buildApartment() {
     moon.position.set(-6, 12, -10);
     moon.target.position.set(4, 0, 2);
     group.add(moon, moon.target);
-    group.add(new THREE.HemisphereLight('#8a94b8', '#2a2018', 0.25));
+    const hemi = new THREE.HemisphereLight('#8a94b8', '#2a2018', 0.25);
+    group.add(hemi);
+    Object.assign(night, { facade, moon, hemi });
     // the rest of the building under the flat, so it doesn't float in the dollhouse view
     const mass = mat('#3a3834');
     // its stairwell side stays behind the stairwell's own wall: two faces in one plane flicker in stripes
@@ -211,7 +214,7 @@ export function buildApartment() {
   }
 
   group.add(ceiling);
-  return { group, ceiling, colliders, lights, doors };
+  return { group, ceiling, colliders, lights, doors, night };
 }
 
 // The rest of the khrushchevka, seen from the yard: a window under and over each of Oleg's,

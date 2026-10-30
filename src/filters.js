@@ -128,10 +128,11 @@ const Shader = {
     }`,
 };
 
-// little screen texts some looks come with (the bodycam's timestamp, the tape's PLAY)
+// little screen texts some looks come with (the bodycam's timestamp, the tape's PLAY); date = { day, month }
+const pad = (n) => String(n).padStart(2, '0');
 const OVERLAYS = {
-  bodycam: (clock) => `<div class="ov-tl"><b class="rec">●</b> REC&nbsp;&nbsp;AXON BODY 4&nbsp;&nbsp;X81034927</div><div class="ov-br">2025-09-30&nbsp;&nbsp;T${clock}:${String(Math.floor(Date.now() / 1000) % 60).padStart(2, '0')}&nbsp;&nbsp;MSK</div>`,
-  vhs: (clock) => `<div class="ov-tl vhs">▶ PLAY</div><div class="ov-bl vhs">SP&nbsp;&nbsp;${clock}<br>СЕН. 30 2025</div>`,
+  bodycam: (clock, d) => `<div class="ov-tl"><b class="rec">●</b> REC&nbsp;&nbsp;AXON BODY 4&nbsp;&nbsp;X81034927</div><div class="ov-br">2025-${pad(d.month)}-${pad(d.day)}&nbsp;&nbsp;T${clock}:${pad(Math.floor(Date.now() / 1000) % 60)}&nbsp;&nbsp;MSK</div>`,
+  vhs: (clock, d) => `<div class="ov-tl vhs">▶ PLAY</div><div class="ov-bl vhs">SP&nbsp;&nbsp;${clock}<br>${d.month === 10 ? 'ОКТ.' : 'СЕН.'} ${d.day} 2025</div>`,
   night: () => `<div class="ov-tl night">NV-1&nbsp;&nbsp;GAIN ×4</div>`,
 };
 
@@ -168,9 +169,9 @@ export function createFilters(composer, el) {
       pass.uniforms.uRes.value = [w * ratio, h * ratio];
     },
     // overlay = false: no screen texts (the orbit view is drawn without the filter)
-    update(time, clock, overlay = true) {
+    update(time, clock, overlay = true, date = { day: 30, month: 9 }) {
       pass.uniforms.uTime.value = time;
-      const ov = OVERLAYS[FILTERS[i].id]?.(clock) ?? '';
+      const ov = OVERLAYS[FILTERS[i].id]?.(clock, date) ?? '';
       if (ov !== lastOv) el.innerHTML = lastOv = ov;
       el.hidden = !ov || !overlay;
     },

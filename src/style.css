@@ -283,6 +283,44 @@ h1 span { display: block; margin-top: 8px; font-size: 0.42em; letter-spacing: 0.
   .mate.bad .badge, .oleg-name em, .door-alert, .bar.low, .courier-chip.here, .menu-card, .toast { animation: none; }
 }
 
+/* ================= the story (game/story.js) =================
+   Scenes get film bars and subtitles; a night starts on a black card with the date on the LED clock;
+   the credits roll forever on black. */
+#story { position: fixed; inset: 0; z-index: 6; pointer-events: none; }
+.story-bar { position: absolute; left: 0; right: 0; height: 0; background: #000; transition: height 0.9s ease; }
+.story-bar.top { top: 0; }
+.story-bar.bottom { bottom: 0; }
+#story.on .story-bar { height: 9vh; }
+.story-line { position: absolute; left: 50%; bottom: calc(9vh + 18px); width: min(920px, calc(100% - 32px)); margin: 0; transform: translateX(-50%); text-align: center; font: 700 26px/1.35 var(--body); color: #fff; text-shadow: 0 2px 6px rgba(0, 0, 0, 0.95), 0 0 24px rgba(0, 0, 0, 0.7); text-wrap: balance; opacity: 0; }
+.story-line.on { animation: line-in 0.35s ease-out forwards; }
+.story-line em { margin-right: 12px; font: 15px var(--display); font-style: normal; letter-spacing: 0.12em; text-transform: uppercase; color: var(--lamp); vertical-align: 3px; }
+@keyframes line-in { from { opacity: 0; translate: 0 6px; } to { opacity: 1; translate: 0 0; } }
+.story-hint { position: absolute; right: 18px; bottom: calc(4.5vh - 7px); font: 10.5px var(--display); letter-spacing: 0.14em; text-transform: uppercase; color: rgba(241, 232, 214, 0.38); }
+.story-card { position: fixed; inset: 0; z-index: 7; display: grid; place-content: center; justify-items: center; gap: 20px; padding: 24px; background: #000; text-align: center; pointer-events: none; animation: story-card-in 0.5s ease-out; transition: opacity 0.7s ease; }
+.story-card.out { opacity: 0; }
+@keyframes story-card-in { from { opacity: 0; } }
+.story-card b { font: 700 clamp(40px, 8vw, 76px)/1 var(--mono); letter-spacing: 0.04em; color: var(--led); text-shadow: 0 0 10px rgba(255, 74, 44, 0.75), 0 0 32px rgba(255, 74, 44, 0.35); }
+.story-card span { font: clamp(17px, 2.4vw, 23px)/1.35 var(--display); letter-spacing: 0.03em; color: var(--ink); animation: story-card-in 0.6s 0.5s ease-out both; }
+.story-card.big span { font-size: clamp(26px, 4.4vw, 44px); animation-delay: 0s; }
+.story-card b:empty, .story-card span:empty { display: none; }
+#credits { position: fixed; inset: 0; z-index: 8; overflow: hidden; background: #000; }
+.credits-roll { position: absolute; top: 0; left: 0; right: 0; will-change: transform; }
+.credits-roll p { display: grid; grid-template-columns: 1fr auto 1fr; gap: 16px; margin: 0; padding: 7px 24px; font: 19px/1.35 var(--body); }
+.credits-roll b { text-align: right; color: var(--ink); }
+.credits-roll i { font-style: normal; color: var(--ink-dim); }
+.credits-roll p span { color: var(--ink-dim); }
+.credits-roll h2 { margin: 0; padding: 48px 24px 14px; text-align: center; font: 14px var(--display); letter-spacing: 0.24em; text-transform: uppercase; color: var(--lamp); }
+.credits-roll .title { padding: 0 24px 24px; font: clamp(30px, 5vw, 52px)/1.05 var(--display); letter-spacing: 0.01em; text-transform: uppercase; color: var(--ink); }
+.credits-note { position: absolute; inset: 0; margin: 0; display: grid; place-items: center; padding: 24px; background: rgba(0, 0, 0, 0.82); text-align: center; font: clamp(24px, 4vw, 38px) var(--display); color: var(--lamp); animation: story-card-in 0.3s ease-out; }
+.credits-skip { position: absolute; right: 22px; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); padding: 8px 14px; border-color: var(--line); background: rgba(13, 12, 17, 0.7); font: 13px var(--display); letter-spacing: 0.08em; color: var(--ink-dim); }
+.credits-skip kbd { margin-right: 4px; padding: 0 6px; border-radius: 5px; background: var(--lamp); color: #1b1408; font: 700 12px/18px var(--mono); }
+@media (max-width: 700px) {
+  .story-line { font-size: 19px; }
+  .credits-roll p { grid-template-columns: 1fr; gap: 0; text-align: center; }
+  .credits-roll b { text-align: center; }
+  .credits-roll i { display: none; }
+}
+
 /* ---------- "Oleg's eyes" filters: screen texts and the name flash ---------- */
 .filter-ov { position: fixed; inset: 0; pointer-events: none; font: 700 15px/1.35 var(--mono); color: #fff; text-shadow: 0 0 4px rgba(0, 0, 0, 0.9); letter-spacing: 0.04em; }
 .filter-ov .ov-tl { position: absolute; top: 9%; left: 9%; }
@@ -307,3 +345,14 @@ h1 span { display: block; margin-top: 8px; font-size: 0.42em; letter-spacing: 0.
 .perf-note { color: var(--ink-dim); font-size: 13px; }
 .perf-buttons { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
 .perf.card textarea { width: 100%; height: 160px; margin-top: 10px; font: 11px var(--mono); }
+
+/* ---------- the shop's LED sign along the bottom of the title screen (ui/led.js) ---------- */
+#menu { padding-bottom: calc(var(--led-space, 80px) + 28px); } /* the card stays above the sign */
+.led {
+  position: fixed; left: 16px; right: 16px; bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  display: flex; justify-content: center; padding: 6px; pointer-events: none;
+  background: #070303; border: 1px solid rgba(255, 238, 214, 0.1); border-radius: 6px;
+  box-shadow: 0 0 0 3px #17120f, 0 10px 30px rgba(0, 0, 0, 0.7), 0 0 calc(60px * var(--glow, 1)) rgba(255, 58, 28, calc(0.22 * var(--glow, 1)));
+}
+.led::after { content: ''; position: absolute; inset: 0; border-radius: inherit; background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), transparent 42%); }
+.led canvas { display: block; }

@@ -3,6 +3,7 @@ import { TUNE } from '../config.js';
 import { ITEMS } from '../game/game.js';
 import { iconURL, iconImg, hasRealIcon } from './icons.js';
 import { moodFace, moodState } from '../world/faces.js';
+import { dateOf } from '../game/story.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -151,7 +152,7 @@ export function createHUD({ onBuy }) {
     },
     update(game, { roomName, target, actions }) {
       const st = game.state;
-      el.night.textContent = `НОЧЬ ${game.night}`;
+      el.night.textContent = `НОЧЬ ${game.night} · ${dateOf(game.night).short}`;
       el.time.textContent = game.clock;
       el.room.textContent = roomName ?? '';
       // the courier: when he comes and with what, right under the clock
@@ -215,7 +216,7 @@ export function createHUD({ onBuy }) {
       el.blackout.hidden = !(game.oleg.blackout > 0);
 
       if (!el.phone.hidden) {
-        el.phoneTime.textContent = game.clock;
+        el.phoneTime.textContent = `${game.clock} · ${dateOf(game.night).short}`;
         set('money', el.phoneMoney, `${iconImg('money', '')}${st.money} ₽`);
         if (money !== st.money) {
           money = st.money;

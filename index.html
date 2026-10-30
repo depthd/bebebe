@@ -100,6 +100,7 @@
           <div><dt>V</dt><dd>фильтр «глаза Олега»: VHS, бодикам, PS1…</dd></div>
         </dl>
       </div>
+      <div class="led" aria-hidden="true"><canvas id="led"></canvas></div>
     </div>
 
     <div id="end" hidden>
@@ -119,6 +120,20 @@
     <div id="orbit-bar" hidden>
       <button id="btn-back" type="button">← Меню</button>
       <span>Вид сверху: крути мышью или пальцем</span>
+    </div>
+
+    <!-- the story (src/game/story.js): scenes between the nights, the night cards, the credits -->
+    <div id="story" hidden>
+      <div class="story-bar top"></div>
+      <div class="story-bar bottom"></div>
+      <p class="story-line" id="story-line"></p>
+      <small class="story-hint">Любая клавиша — дальше · Esc — пропустить</small>
+    </div>
+    <div class="story-card" id="story-card" hidden><b id="story-date"></b><span id="story-text"></span></div>
+    <div id="credits" hidden>
+      <div class="credits-roll" id="credits-roll"></div>
+      <p class="credits-note" id="credits-note" hidden>Моё недовольство учтено.</p>
+      <button class="credits-skip" id="credits-skip" type="button"><kbd>M</kbd> — пропустить</button>
     </div>
 
     <script type="module" src="/src/main.js"></script>
