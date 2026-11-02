@@ -209,6 +209,9 @@ function pause() {
   mode = 'menu';
   setPhone(false, false);
   $('btn-play').textContent = started && !game.over ? 'Продолжить' : `Начать ночь ${game.night}`;
+  const midNight = started && !game.over;
+  $('btn-story').hidden = midNight; // a paused night: a night card would start it over
+  if (midNight) storyPick(false);
   show('menu', true);
   show('hud', false);
   audio.setMusic(false); // the frame loop keeps them off from here, but a hidden tab gets no frames
@@ -295,6 +298,29 @@ for (const b of document.querySelectorAll('#night-pick [data-night]')) {
     play();
   });
 }
+// «Сюжет» in the menu: any scene or night card on its own, then back to the menu (?scene=after3 opens one at once)
+let viewing = false;
+function watchStory(id) {
+  const card = /^card([1-5])$/.exec(id), night = game.night;
+  if (!card && id !== 'credits' && !story.has(id)) return console.warn(`no story piece "${id}"`);
+  audio.init();
+  viewing = true;
+  if (card) startNight(Number(card[1])); // the toast wants the guys at the table, at the start of that night
+  const piece = card ? story.card(Number(card[1])) : id === 'credits' ? story.credits() : id === 'truth' ? story.scene('truth').then(() => story.credits()) : story.scene(id);
+  toStory(piece, () => {
+    viewing = false;
+    if (card) startNight(night);
+    pause();
+  });
+}
+for (const b of document.querySelectorAll('#story-pick [data-scene]')) b.addEventListener('click', () => watchStory(b.dataset.scene));
+// «Сюжет» opens the rows; the list of keys makes room for them meanwhile
+function storyPick(open) {
+  $('story-pick').hidden = !open;
+  $('btn-story').classList.toggle('on', open);
+  document.querySelector('#menu .controls').style.display = open ? 'none' : '';
+}
+$('btn-story').addEventListener('click', () => storyPick($('story-pick').hidden));
 $('btn-orbit').addEventListener('click', toOrbit);
 $('btn-filter').addEventListener('click', () => nextFilter());
 $('btn-filter').textContent = `Глаза Олега: ${filters.current.name}`;
@@ -405,7 +431,7 @@ function snap() {
 const use = { down: false, pressed: false, mx: 0, my: 0 };
 document.addEventListener('mousedown', (e) => {
   if (mode === 'story' && e.button === 0) {
-    if (!locked && story.leadsToPlay) lock(); // a click is a gesture: the night after the scene gets the mouse
+    if (!locked && story.leadsToPlay && !viewing) lock(); // a click is a gesture: the night after the scene gets the mouse
     return story.input('next');
   }
   if (e.button !== 0 || mode !== 'play' || phoneOpen || (!locked && !focusActive())) return;
@@ -770,7 +796,8 @@ $('btn-play').textContent = `Начать ночь ${game.night}`;
 for (const b of document.querySelectorAll('#menu button')) b.disabled = false;
 if (isTouchOnly) {
   $('btn-play').disabled = true;
-  document.querySelectorAll('#night-pick button').forEach((b) => (b.disabled = true));
+  document.querySelectorAll('#night-pick button').forEach((b) => (b.disabled = b.id !== 'btn-story'));
   $('mobile-note').hidden = false;
 }
+if (params.get('scene')) watchStory(params.get('scene'));
 requestAnimationFrame(frame);

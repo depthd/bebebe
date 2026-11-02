@@ -115,7 +115,17 @@
         </div>
         <div class="night-pick" id="night-pick">
           <span>Сразу в ночь</span>
-          <button type="button" data-night="1" disabled>1</button><button type="button" data-night="2" disabled>2</button><button type="button" data-night="3" disabled>3</button><button type="button" data-night="4" disabled>4</button><button type="button" data-night="5" disabled>5</button>
+          <button type="button" data-night="1" disabled>1</button><button type="button" data-night="2" disabled>2</button><button type="button" data-night="3" disabled>3</button><button type="button" data-night="4" disabled>4</button><button type="button" data-night="5" disabled>5</button><button type="button" id="btn-story" disabled>Сюжет</button>
+        </div>
+        <div class="story-pick" id="story-pick" hidden>
+          <div class="night-pick">
+            <span>Сценки</span>
+            <button type="button" data-scene="after1" disabled title="После 1-й ночи">Пустая хата</button><button type="button" data-scene="after2" disabled title="После 2-й ночи">Дежавю</button><button type="button" data-scene="after3" disabled title="После 3-й ночи">Стакан</button><button type="button" data-scene="after4" disabled title="После 4-й ночи">Бита</button><button type="button" data-scene="before5" disabled title="Перед 5-й ночью">Не спал</button><button type="button" data-scene="truth" disabled title="После 5-й ночи, потом титры">Правда</button><button type="button" data-scene="credits" disabled title="M — выразить недовольство">Титры</button>
+          </div>
+          <div class="night-pick">
+            <span>Начало ночи</span>
+            <button type="button" data-scene="card1" disabled>1</button><button type="button" data-scene="card2" disabled>2</button><button type="button" data-scene="card3" disabled>3</button><button type="button" data-scene="card4" disabled>4</button><button type="button" data-scene="card5" disabled>5</button>
+          </div>
         </div>
         <p class="mobile-note" id="mobile-note" hidden>Играть — с компа (мышь + клавиатура). С телефона можно посмотреть хату сверху.</p>
         <dl class="controls">

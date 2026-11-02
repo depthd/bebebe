@@ -336,6 +336,12 @@ h1 span { display: block; margin-top: 8px; font-size: 0.42em; letter-spacing: 0.
 .night-pick { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .night-pick span { font: 11px var(--display); letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-dim); margin-right: 6px; }
 .night-pick button { width: 40px; height: 36px; padding: 0; font: 700 15px var(--mono); }
+.story-pick { display: grid; gap: 8px; }
+.story-pick[hidden] { display: none; }
+#btn-story { width: auto; padding: 0 12px; margin-left: 8px; font: 700 13px var(--body); }
+#btn-story.on { border-color: var(--lamp); color: var(--lamp); }
+.night-pick button[hidden] { display: none; }
+.story-pick [data-scene^='after'], .story-pick [data-scene='before5'], .story-pick [data-scene='truth'], .story-pick [data-scene='credits'] { width: auto; padding: 0 10px; font: 700 13px var(--body); }
 .mobile-note { margin: 0; color: var(--warn); font-size: 14px; }
 .controls { margin: 4px 0 0; padding-top: 16px; border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 9px 18px; font-size: 13.5px; }
 .controls div { display: flex; gap: 10px; min-width: 0; }
