@@ -871,7 +871,7 @@ export class Friend extends Walker {
         this.fun += 10;
         this.wet = 0;
         this.clearProblem(true);
-        this.game.sfx.splash();
+        this.game.sfx.splash({ pos: [...this.pos] });
         this.endActivity();
       }
     } else {

@@ -165,7 +165,7 @@ export class PartyEvents {
       q.fight -= dt;
       if (!a.figure.busy) a.figure.play(Math.random() < 0.5 ? 'shout' : 'jolt');
       if (!b.figure.busy) b.figure.play(Math.random() < 0.5 ? 'jolt' : 'shout');
-      if (Math.random() < dt * 3) g.sfx.pat();
+      if (Math.random() < dt * 3) g.sfx.pat({ pos: [(a.pos[0] + b.pos[0]) / 2, (a.pos[1] + b.pos[1]) / 2] });
       if (q.fight <= 0) {
         g.breakSomething(a.room?.id);
         g.state.noise += E.fightNoise;
@@ -267,7 +267,7 @@ export class PartyEvents {
     this.fire = { size: 0.2, full: 0 };
     this.fireMesh.position.set((gr.x0 + gr.x1) / 2 - 0.35, 0, (gr.z0 + gr.z1) / 2);
     this.fireMesh.visible = true;
-    g.sfx.whoosh();
+    g.sfx.whoosh({ pos: [this.fireMesh.position.x, this.fireMesh.position.z] });
     kirill.setProblem({
       id: 'fire', text: 'спалил балкон! Ведро у ванны: набери воды из лейки и плесни на огонь', short: 'ПОЖАР', drain: 3,
       actions: () => [],

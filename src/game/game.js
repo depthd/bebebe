@@ -264,9 +264,9 @@ export class Game {
     if (f.pos[0] > t.x0 - 0.6 && f.pos[0] < t.x1 + 0.6 && f.pos[1] > t.z0 - 0.6 && f.pos[1] < t.z1 + 0.6 && this.tableBooze() > 0) {
       if (st.table.beer > 0) st.table.beer -= 1;
       else st.table.vodka -= 1;
-      this.sfx.crash();
+      this.sfx.crash({ pos: [...f.pos] });
       this.toast(`${f.name} рухнул на стол — бутылка вдребезги`, 'bad', 'Зал');
-    } else this.sfx.pat();
+    } else this.sfx.pat({ pos: [...f.pos] });
   }
 
   bodyBlocked(x, z, r = 0.16) {
@@ -674,7 +674,7 @@ export class Game {
     this.setBroken(it, true);
     this.state.hut -= TUNE.hut.smash;
     this.state.noise += TUNE.noise.smashHit;
-    this.sfx.crash();
+    this.sfx.crash({ pos: [(it.x0 + it.x1) / 2, (it.z0 + it.z1) / 2] });
   }
 
   pickToy() {
